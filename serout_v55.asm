@@ -5,9 +5,9 @@
 ;
 ; Wywolanie z BASIC-a:
 ;   CALL SO          wyslij 1 znak z TX+0
-;   CALL SO,N        wyslij N znakow z TX+0.. (1..256; 0 = 1 znak, >256 = 256)
+;   CALL SO,N        wyslij N znakow z TX+0.. (1..255; 0 = 1 znak, >255 = 255)
 ; Zmienna N NIE jest zmieniana (powrot z C=0).
-; Bufor TX: 256 bajtow od poczatku strony pamieci (TX = RAM+&300 = &4300).
+; Bufor TX: 255 bajtow od poczatku strony pamieci (TX = RAM+&300 = &4300..&43FE).
 ;
 ; 1 bit = 1/9600 s = 135,4 cyklu. Czasy (cykle, tablica MAME / instrukcja):
 ;   bit danych 134 / 137, bit startu 134-135 / 137-138, bit stopu ~1,2 bitu.
@@ -16,7 +16,7 @@
 ; Licznik bitow: znacznik (sentinel) - SEC+ROR wklada 1 do bitu 7, po
 ; osmym SHR akumulator = 0. Z sprawdzamy przez BII A,&FF, bo wedlug
 ; instrukcji LH5801 rozkazy SHR/ROR nie ustawiaja flagi Z.
-; Licznik znakow w UH (0 = 256), bez zmiennych w pamieci.
+; Licznik znakow w UH (1..255), bez zmiennych w pamieci.
 ;
 ; Adres ladowania: SO = RAM+&0C5 (&40C5).
 ; Symbol wstawiany przez BASIC: TP = starszy bajt adresu bufora TX.
@@ -26,12 +26,12 @@
         BZS+ SMALL          ; N = 0..255
         BII  A,&80          ; CALL SO bez zmiennej: X = adres w ROM (XH>=&80)
         BZR+ N1             ;   -> 1 znak
-        LDI  A,0            ; N = 256..32767 -> 256 (UH = 0)
+        LDI  A,&FF          ; N = 256..32767 -> 255
         BCH+ NOK
 SMALL:  LDA  XL
         BZR+ NOK            ; N = 1..255
 N1:     LDI  A,1            ; N = 0 -> 1 znak
-NOK:    STA  UH             ; UH = liczba znakow (0 = 256)
+NOK:    STA  UH             ; UH = liczba znakow (1..255)
         LDI  XH,TP          ; X = bufor TX (poczatek strony)
         LDI  XL,0
         LDI  YH,&F0         ; Y = &F008 (port C)

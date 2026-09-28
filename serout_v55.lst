@@ -7,9 +7,9 @@
                  ;
                  ; Wywolanie z BASIC-a:
                  ;   CALL SO          wyslij 1 znak z TX+0
-                 ;   CALL SO,N        wyslij N znakow z TX+0.. (1..256; 0 = 1 znak, >256 = 256)
+                 ;   CALL SO,N        wyslij N znakow z TX+0.. (1..255; 0 = 1 znak, >255 = 255)
                  ; Zmienna N NIE jest zmieniana (powrot z C=0).
-                 ; Bufor TX: 256 bajtow od poczatku strony pamieci (TX = RAM+&300 = &4300).
+                 ; Bufor TX: 255 bajtow od poczatku strony pamieci (TX = RAM+&300 = &4300..&43FE).
                  ;
                  ; 1 bit = 1/9600 s = 135,4 cyklu. Czasy (cykle, tablica MAME / instrukcja):
                  ;   bit danych 134 / 137, bit startu 134-135 / 137-138, bit stopu ~1,2 bitu.
@@ -18,7 +18,7 @@
                  ; Licznik bitow: znacznik (sentinel) - SEC+ROR wklada 1 do bitu 7, po
                  ; osmym SHR akumulator = 0. Z sprawdzamy przez BII A,&FF, bo wedlug
                  ; instrukcji LH5801 rozkazy SHR/ROR nie ustawiaja flagi Z.
-                 ; Licznik znakow w UH (0 = 256), bez zmiennych w pamieci.
+                 ; Licznik znakow w UH (1..255), bez zmiennych w pamieci.
                  ;
                  ; Adres ladowania: SO = RAM+&0C5 (&40C5).
                  ; Symbol wstawiany przez BASIC: TP = starszy bajt adresu bufora TX.
@@ -28,12 +28,12 @@
 03  8B 08                BZS+ SMALL          ; N = 0..255
 05  BF 80                BII  A,&80          ; CALL SO bez zmiennej: X = adres w ROM (XH>=&80)
 07  89 07                BZR+ N1             ;   -> 1 znak
-09  B5 00                LDI  A,0            ; N = 256..32767 -> 256 (UH = 0)
+09  B5 FF                LDI  A,&FF          ; N = 256..32767 -> 255
 0B  8E 05                BCH+ NOK
 0D  04           SMALL:  LDA  XL
 0E  89 02                BZR+ NOK            ; N = 1..255
 10  B5 01        N1:     LDI  A,1            ; N = 0 -> 1 znak
-12  28           NOK:    STA  UH             ; UH = liczba znakow (0 = 256)
+12  28           NOK:    STA  UH             ; UH = liczba znakow (1..255)
 13  48 TP                LDI  XH,TP          ; X = bufor TX (poczatek strony)
 15  4A 00                LDI  XL,0
 17  58 F0                LDI  YH,&F0         ; Y = &F008 (port C)

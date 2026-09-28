@@ -4,7 +4,7 @@ Nadawanie (`SEROUT`) i odbiór (`SERIN`) metodą bit-banging:
 wejście **PB2** (CMT-IN, pin 27 złącza 60-pin), wyjście **PC7**, 8N1,
 polaryzacja TTL (spoczynek = 1).
 
-## Wersja v55 (9600 bps, bufory po 256 znaków)
+## Wersja v55 (9600 bps, bufory po 255 znaków)
 
 | Plik | Opis |
 |---|---|
@@ -17,16 +17,19 @@ Mapa pamięci (RAM od &4000), **wymaga `NEW &4400`** w trybie PRO:
 | Adres | Zawartość |
 |---|---|
 | &40C5 | SEROUT (84 B) |
-| &4130 | SERIN (122 B) |
-| &41FE, &41FF | RC: liczba odebranych znaków (starszy, młodszy bajt; 0–256) |
-| &4200..&42FF | RX: odebrane znaki (256 B) |
-| &4300..&43FF | TX: znaki do wysłania (256 B) |
+| &4130 | SERIN (118 B) |
+| &41FF | RC: liczba odebranych znaków (1 bajt, 0–255) |
+| &4200..&42FE | RX: odebrane znaki (255 B) |
+| &4300..&43FE | TX: znaki do wysłania (255 B) |
 
-* `CALL SO,N` wysyła N = 1…256 znaków z TX (N = 0 → 1 znak, N > 256 → 256).
-* `CALL SI,M` odbiera do M = 1…256 znaków do RX (M = 0 lub > 256 → 256).
-  Liczba znaków trafia do M i do RC: `D = (PEEK RC) * 256 + PEEK (RC + 1)`.
-  Znaki: `PEEK (RX + I)` dla I = 0…D−1.
-* Licznik ma 16 bitów, bo 256 znaków nie mieści się w jednym bajcie.
+* `CALL SO,N` wysyła N = 1…255 znaków z TX (N = 0 → 1 znak, N > 255 → 255).
+* `CALL SI,M` odbiera do M = 1…255 znaków do RX (M = 0 lub > 255 → 255).
+  Liczba znaków trafia do M i do RC: `D = PEEK RC`. Znaki: `PEEK (RX + I)` dla I = 0…D−1.
+* RX zaczyna się od początku strony pamięci, więc liczba znaków to po prostu
+  młodszy bajt adresu końca.
+* Wejście można przełączyć z PB2 (CMT-IN) na PB0 lub PB1, zmieniając maski:
+  PB0 `POKE SI+26,&FE : POKE SI+35,1 : POKE SI+51,1 : POKE SI+71,1 : POKE SI+84,1`,
+  PB1 to samo z `&FD` i `2`. Na PB0/PB1 potrzebny jest rezystor podciągający 10 kΩ.
 
 ---
 

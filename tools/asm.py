@@ -6,7 +6,7 @@ emitted as BASIC variables in the POKE lines.
 """
 import re
 
-SYMS = ("RH", "RL", "R1", "CN", "TH", "TL", "RP", "CP", "TP", "NP")
+SYMS = ("RH", "RL", "R1", "CN", "TH", "TL", "RP", "CP", "TP")
 
 # (mnemonic, operand-pattern) -> (opcode bytes, kind)
 # kind: None | 'imm' | 'abs' | 'rel+' | 'rel-'

@@ -1,4 +1,4 @@
-"""Run the SEROUT/SERIN test suite on the v55 installer (9600 bps, 256-byte buffers).
+"""Run the SEROUT/SERIN test suite on the v55 installer (9600 bps, 255-byte buffers).
 
     python3 tools/test_v55.py
 """

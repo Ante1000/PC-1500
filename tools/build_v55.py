@@ -1,10 +1,10 @@
-"""Build v55 (9600 bps, 256-byte buffers): assemble serout_v55.asm and
+"""Build v55 (9600 bps, 255-byte buffers): assemble serout_v55.asm and
 serin_v55.asm, write their .lst listings and refresh the POKE lines in
 pc1500_uart_installer-v55-9600.txt (SEROUT: 170..265, SERIN: 280..355).
 
 Memory map (RAM base A0 = &4000):
-  &40C5  SEROUT          &4130  SERIN        &41FE/&41FF  RX length (hi, lo)
-  &4200..&42FF  RX data  &4300..&43FF  TX data             BASIC from &4400
+  &40C5  SEROUT          &4130  SERIN        &41FF  RC = RX length (1 byte)
+  &4200..&42FE  RX data  &4300..&43FE  TX data      BASIC from &4400
 
     python3 tools/build_v55.py
 """
@@ -19,7 +19,7 @@ BAS = os.path.join(ROOT, "pc1500_uart_installer-v55-9600.txt")
 PARTS = [
     # source, variable, first, step, last, title, base, free bytes
     ("serout_v55", "SO", 170, 10, 265, "SEROUT v55 9600", "SO = RAM+&0C5", 0x130 - 0x0C5),
-    ("serin_v55", "SI", 280, 5, 355, "SERIN v55 9600", "SI = RAM+&130", 0x1FE - 0x130),
+    ("serin_v55", "SI", 280, 5, 355, "SERIN v55 9600", "SI = RAM+&130", 0x1FF - 0x130),
 ]
 
 if __name__ == "__main__":

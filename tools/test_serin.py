@@ -43,11 +43,11 @@ def machine(line, timing, ro=3):
     return cpu, env
 
 
-# v55 layout: 256-byte page-aligned buffers, 16-bit RX length at RC (hi, lo);
+# v55 layout: page-aligned 255-byte buffers, 1-byte RX length at RC = RX-1;
 # older layout: length byte at RX+0, data RX+1..RX+127, TX 128 bytes.
 BIG = "RC" in machine(Line(), "mame")[1]
-RXCAP = 256 if BIG else 127
-TXCAP = 256 if BIG else (128 if NEW_SEROUT else 127)
+RXCAP = 255 if BIG else 127
+TXCAP = 255 if BIG else (128 if NEW_SEROUT else 127)
 
 
 # ----------------------------------------------------------------- SERIN
@@ -63,8 +63,8 @@ def rx(data=b"", t0=0.01, baud=None, gap=0.0, var=None, timing="mame",
     c, x = cpu.call(env["SI"], xval=var, max_seconds=40)
     if BIG:
         RC = env["RC"]
-        n, data = cpu.m[RC] * 256 + cpu.m[RC + 1], RX
-        allowed = lambda a: RX <= a < RX + 256 or RC <= a <= RC + 1
+        n, data = cpu.m[RC], RX
+        allowed = lambda a: RX <= a < RX + RXCAP or a == RC
     else:
         n, data = cpu.m[RX], RX + 1
         allowed = lambda a: RX <= a < RX + 128
@@ -99,7 +99,8 @@ def serin_suite(timing):
     r = rx(b"XYZ", var=1, timing=timing)
     check("CALL SI,M (M=1)", r["got"] == b"X" and r["x"] == 1)
     if BIG:
-        for m, want in ((128, 128), (255, 255), (256, 256), (0, 256), (300, 256), (0xFFFF, 256)):
+        for m, want in ((128, 128), (254, 254), (255, 255), (0, 255), (256, 255), (300, 255),
+                        (0xFFFF, 255)):
             r = rx(rnd(300, m), var=m, timing=timing)
             check("CALL SI,M (M=%d) -> %d chars, M:=%d" % (m, want, want),
                   r["n"] == want and r["x"] == want and r["got"] == rnd(300, m)[:want])
@@ -222,19 +223,17 @@ def serout_suite(timing):
         got, fr = decode(tr, init=init)
         check("%d random bytes" % len(d), got == d and fr)
     d = bytes(range(256))
-    if BIG:
-        good = decode(tx(d, var=256, timing=timing)[2], init=init)[0] == d
-    else:
-        good = decode(tx(d[:128], var=128, timing=timing)[2], init=init)[0] == d[:128] and \
-            decode(tx(d[128:], var=128, timing=timing)[2], init=init)[0] == d[128:]
+    good = decode(tx(d[:128], var=128, timing=timing)[2], init=init)[0] == d[:128] and \
+        decode(tx(d[128:], var=128, timing=timing)[2], init=init)[0] == d[128:]
     check("all 256 byte values", good)
     if BIG:
         c, x, tr, t = tx(b"AB", var=0, timing=timing)
         check("CALL SO,N (N=0) -> 1 char", decode(tr, init=init)[0] == b"A")
-        c, x, tr, t = tx(rnd(256, 9), var=200, timing=timing)
-        check("CALL SO,N (N=200) -> 200 chars", decode(tr, init=init)[0] == rnd(256, 9)[:200])
-        c, x, tr, t = tx(rnd(256, 8), var=300, timing=timing)
-        check("CALL SO,N (N=300) -> 256 chars", decode(tr, init=init)[0] == rnd(256, 8))
+        c, x, tr, t = tx(rnd(255, 9), var=200, timing=timing)
+        check("CALL SO,N (N=200) -> 200 chars", decode(tr, init=init)[0] == rnd(255, 9)[:200])
+        for n in (256, 300):
+            c, x, tr, t = tx(rnd(255, n), var=n, timing=timing)
+            check("CALL SO,N (N=%d) -> 255 chars" % n, decode(tr, init=init)[0] == rnd(255, n))
         c, x, tr, t = tx(b"XY", var=0xFFFF, timing=timing)
         check("CALL SO,N (N=65535, XH>=&80 = like no variable) -> 1 char",
               decode(tr, init=init)[0] == b"X")
