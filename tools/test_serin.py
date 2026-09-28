@@ -1,10 +1,12 @@
-"""Test SERIN v52 from the BASIC installer on the LH5801 simulator.
+"""Test SERIN/SEROUT from a BASIC installer on the LH5801 simulator.
 
-    python3 tools/test_serin.py [installer.txt]
+    python3 tools/test_serin.py [installer.txt] [baud]
+    (default: pc1500_uart_installer-v52.txt, 4800; see tools/test_9600.py)
 
-The installer's POKE lines are evaluated (A0=&4000), SERIN is CALLed with a
-simulated 4800 bps 8N1 signal on PB2, and RX / the CALL variable are checked.
-Every scenario is run with two cycle tables (MAME core and LH5801 manual).
+The installer's POKE lines are evaluated (A0=&4000). SERIN is CALLed with a
+simulated 8N1 signal on PB2; SEROUT's PC7 output is decoded by a model of an
+ideal PC UART receiver. Every scenario runs with two cycle tables (MAME core
+and the LH5801 manual, where shifts do not change the Z flag).
 """
 import os
 import random
@@ -15,29 +17,10 @@ from lh5801sim import CPU, Line, load_basic  # noqa: E402
 
 ROOT = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 BAS = sys.argv[1] if len(sys.argv) > 1 else os.path.join(ROOT, "pc1500_uart_installer-v52.txt")
+BAUD = float(sys.argv[2]) if len(sys.argv) > 2 else 4800.0
+NEW_SEROUT = BAUD == 9600          # v53 SEROUT: N=0 -> 1, N>128 -> 128
 STACK = (0x784E, 0x784F)            # return address pushed by the test harness
 fails = 0
-
-
-def rx(data=b"", t0=0.01, baud=4800.0, gap=0.0, var=None, timing="mame",
-       ro=3, line=None, stop_bits=1.0):
-    if line is None:
-        line = Line()
-        if data:
-            line.uart(data, t0, baud=baud, gap=gap, stop_bits=stop_bits)
-    cpu = CPU(line, timing=timing, read_offset=ro)
-    for a in range(0x10000):
-        cpu.m[a] = (a * 7 + 3) & 0xFF                  # random-ish RAM
-    env = load_basic(BAS, cpu, stop_line=360)
-    RX = env["RX"]
-    before = bytes(cpu.m)
-    c, x = cpu.call(env["SI"], xval=var, max_seconds=40)
-    n = cpu.m[RX]
-    bad = [a for a in range(0x10000) if cpu.m[a] != before[a]
-           and not RX <= a < RX + 128 and a not in STACK]
-    assert not bad, "memory outside RX written: %s" % [hex(a) for a in bad[:8]]
-    assert n <= 127
-    return dict(n=n, got=bytes(cpu.m[RX + 1:RX + 1 + n]), c=c, x=x, t=cpu.now())
 
 
 def check(name, cond, info=""):
@@ -51,8 +34,35 @@ def rnd(n, seed):
     return bytes(random.randrange(256) for _ in range(n))
 
 
-def suite(timing):
-    print("== cycle table: %s" % timing)
+def machine(line, timing, ro=3):
+    cpu = CPU(line, timing=timing, read_offset=ro)
+    for a in range(0x10000):
+        cpu.m[a] = (a * 7 + 3) & 0xFF                  # random-ish RAM
+    env = load_basic(BAS, cpu, stop_line=360)
+    return cpu, env
+
+
+# ----------------------------------------------------------------- SERIN
+def rx(data=b"", t0=0.01, baud=None, gap=0.0, var=None, timing="mame",
+       ro=3, line=None, stop_bits=1.0):
+    if line is None:
+        line = Line()
+        if data:
+            line.uart(data, t0, baud=baud or BAUD, gap=gap, stop_bits=stop_bits)
+    cpu, env = machine(line, timing, ro)
+    RX = env["RX"]
+    before = bytes(cpu.m)
+    c, x = cpu.call(env["SI"], xval=var, max_seconds=40)
+    n = cpu.m[RX]
+    bad = [a for a in range(0x10000) if cpu.m[a] != before[a]
+           and not RX <= a < RX + 128 and a not in STACK]
+    assert not bad, "memory outside RX written: %s" % [hex(a) for a in bad[:8]]
+    assert n <= 127
+    return dict(n=n, got=bytes(cpu.m[RX + 1:RX + 1 + n]), c=c, x=x, t=cpu.now())
+
+
+def serin_suite(timing):
+    print("== SERIN @ %d bps, cycle table: %s" % (BAUD, timing))
     bad = [b for b in range(256) if rx(bytes([b]), timing=timing)["got"] != bytes([b])]
     check("all 256 byte values", not bad, str(bad[:8]))
     r = rx(b"A", timing=timing)
@@ -64,7 +74,7 @@ def suite(timing):
     check("127 random bytes back-to-back", rx(d, timing=timing)["got"] == d)
     d = rnd(200, 2)
     r = rx(d, timing=timing)
-    t127 = 0.01 + 127 * 10 / 4800
+    t127 = 0.01 + 127 * 10 / BAUD
     check("200 bytes -> first 127, exit right after the 127th",
           r["got"] == d[:127] and r["t"] < t127 + 0.005, "t=%.3f s" % r["t"])
     r = rx(b"HELLO", var=3, timing=timing)
@@ -85,14 +95,14 @@ def suite(timing):
     check("gaps of 600 ms -> 1 char", rx(b"ABC", gap=0.6, timing=timing)["got"] == b"A")
     r = rx(line=Line(idle=0), timing=timing)
     check("line stuck at 0 -> 0 chars after ~30 s", r["n"] == 0 and 28 < r["t"] < 32)
-    ln = Line(idle=0); ln.add(1.0, 1); ln.uart(b"OK", 1.5)
+    ln = Line(idle=0); ln.add(1.0, 1); ln.uart(b"OK", 1.5, baud=BAUD)
     check("line 0 at start, then idle, then data", rx(line=ln, timing=timing)["got"] == b"OK")
-    ln = Line(); ln.add(0.2, 0); ln.add(0.2 + 20e-6, 1); ln.uart(b"Q", 0.3)
+    ln = Line(); ln.add(0.2, 0); ln.add(0.2 + 20e-6, 1); ln.uart(b"Q", 0.3, baud=BAUD)
     check("20 us glitch ignored", rx(line=ln, timing=timing)["got"] == b"Q")
     for pct in (-2.0, -1.0, 1.0, 2.0):
         d = rnd(100, int(pct * 10) + 50)
-        check("100 bytes, sender %+.0f%% (%d bps)" % (pct, 4800 * (1 + pct / 100)),
-              rx(d, baud=4800 * (1 + pct / 100), timing=timing)["got"] == d)
+        check("100 bytes, sender %+.0f%% (%d bps)" % (pct, BAUD * (1 + pct / 100)),
+              rx(d, baud=BAUD * (1 + pct / 100), timing=timing)["got"] == d)
     random.seed(7)
     ok = 0
     for _ in range(40):
@@ -102,45 +112,133 @@ def suite(timing):
                t0=random.uniform(0.001, 2))
         ok += r["got"] == d
     check("40 random packets (gaps, 1-2 stop bits)", ok == 40, "%d/40" % ok)
-    # informational: sender speed range that still works (same as SERIN v47)
     lo = hi = 0
     for p in range(0, 100, 5):
-        if rx(rnd(60, p), baud=4800 * (1 - p / 1000), timing=timing)["got"] != rnd(60, p):
+        if rx(rnd(60, p), baud=BAUD * (1 - p / 1000), timing=timing)["got"] != rnd(60, p):
             break
         lo = p
     for p in range(0, 100, 5):
-        if rx(rnd(60, p), baud=4800 * (1 + p / 1000), timing=timing)["got"] != rnd(60, p):
+        if rx(rnd(60, p), baud=BAUD * (1 + p / 1000), timing=timing)["got"] != rnd(60, p):
             break
         hi = p
     print("  info: sender speed tolerance -%.1f%% .. +%.1f%%" % (lo / 10, hi / 10))
 
 
-def serout_check():
-    cpu = CPU(Line())
-    env = load_basic(BAS, cpu, stop_line=270)
-    cpu.m[env["TX"]:env["TX"] + 5] = b"HELLO"
-    cpu.call(env["SO"], xval=5, max_seconds=5)
-    ev, bit = cpu.tx_log, 1 / 4800
+# ---------------------------------------------------------------- SEROUT
+def tx(data, var=None, timing="mame"):
+    """CALL SO[,var] with data in the TX buffer; returns (C, X, transitions)."""
+    cpu, env = machine(Line(), timing)
+    cpu.pc_port = 0x7F if NEW_SEROUT else 0xFF     # new SEROUT must raise PC7 itself
+    TX = env["TX"]
+    cpu.m[TX:TX + len(data)] = data
+    before = bytes(cpu.m)
+    c, x = cpu.call(env["SO"], xval=var, max_seconds=5)
+    bad = [a for a in range(0x10000) if cpu.m[a] != before[a] and a not in STACK
+           and not (env["SO"] + 99 <= a <= env["SO"] + 100 and not NEW_SEROUT)]
+    assert not bad, "SEROUT wrote memory: %s" % [hex(a) for a in bad[:8]]
+    tr = []
+    lvl = 0 if NEW_SEROUT else 1
+    for t, v in cpu.tx_log:
+        if v != lvl:
+            tr.append((t, v)); lvl = v
+    return c, x, tr, cpu.now()
 
-    def lv(t):
-        v = 1
-        for tt, vv in ev:
-            if tt > t:
-                break
-            v = vv
-        return v
-    out, t = [], ev[0][0]
+
+def level_at(tr, t, init):
+    v = init
+    for tt, vv in tr:
+        if tt > t:
+            break
+        v = vv
+    return v
+
+
+def decode(tr, f=1.0, init=1):
+    """Ideal receiver: falling edge -> sample in the middle of each bit."""
+    T = 1 / (BAUD * f)
+    out, t = [], None
+    starts = [tt for tt, v in tr if v == 0]
+    if not starts:
+        return b"", False
+    t = starts[0]
+    frame_ok = True
     while True:
-        out.append(sum(lv(t + (1.5 + k) * bit) << k for k in range(8)))
-        nxt = [tt for (tt, v) in ev if v == 0 and tt > t + 9.5 * bit and lv(tt - 1e-9) == 1]
+        out.append(sum(level_at(tr, t + (1.5 + k) * T, init) << k for k in range(8)))
+        frame_ok &= level_at(tr, t + 9.5 * T, init) == 1
+        nxt = [s for s in starts if s > t + 9.5 * T]
         if not nxt:
             break
         t = nxt[0]
-    check("SEROUT (unchanged) sends 'HELLO' on PC7", bytes(out) == b"HELLO", repr(bytes(out)))
+    return bytes(out), frame_ok
 
 
-serout_check()
-for tb in ("mame", "guide"):
-    suite(tb)
-print("FAILURES: %d" % fails)
-sys.exit(1 if fails else 0)
+def edge_stats(tr):
+    """Max deviation of data edges from the ideal bit grid and min stop length."""
+    T = 1 / BAUD
+    starts = []
+    for t, v in tr:
+        if v == 0 and (not starts or t > starts[-1] + 9.5 * T):
+            starts.append(t)
+    err = 0.0
+    for s in starts:
+        for t, v in tr:
+            if s < t < s + 9.5 * T:
+                err = max(err, abs((t - s) / T - round((t - s) / T)))
+    stop = min([(b - a) / T - 9 for a, b in zip(starts, starts[1:])] or [9])
+    return err, stop
+
+
+def serout_suite(timing):
+    print("== SEROUT @ %d bps, cycle table: %s" % (BAUD, timing))
+    init = 0 if NEW_SEROUT else 1
+    c, x, tr, t = tx(b"HELLO", var=5, timing=timing)
+    got, fr = decode(tr, init=init)
+    check("CALL SO,N (N=5) sends 'HELLO', N unchanged (C=0)", got == b"HELLO" and fr and c == 0, repr(got))
+    c, x, tr, t = tx(b"HELLO", timing=timing)
+    check("CALL SO sends 1 char", decode(tr, init=init)[0] == b"H")
+    for seed in (1, 2):
+        d = rnd(128, seed) if NEW_SEROUT else rnd(127, seed)
+        c, x, tr, t = tx(d, var=len(d), timing=timing)
+        got, fr = decode(tr, init=init)
+        check("%d random bytes" % len(d), got == d and fr)
+    d = bytes(range(128)) + bytes(range(128, 256))
+    good = decode(tx(d[:128], var=128, timing=timing)[2], init=init)[0] == d[:128] and \
+        decode(tx(d[128:], var=128, timing=timing)[2], init=init)[0] == d[128:]
+    check("all 256 byte values", good)
+    if NEW_SEROUT:
+        c, x, tr, t = tx(b"AB", var=0, timing=timing)
+        check("CALL SO,N (N=0) -> 1 char", decode(tr, init=init)[0] == b"A")
+        c, x, tr, t = tx(rnd(128, 9), var=200, timing=timing)
+        check("CALL SO,N (N=200) -> 128 chars", decode(tr, init=init)[0] == rnd(128, 9))
+        c, x, tr, t = tx(b"XY", var=300, timing=timing)
+        check("CALL SO,N (N>255, XH<>0 = like no variable) -> 1 char",
+              decode(tr, init=init)[0] == b"X")
+        first = tr[0]
+        check("PC7 raised to idle >= 1 bit before the first start bit",
+              first[1] == 1 and tr[1][1] == 0 and (tr[1][0] - first[0]) * BAUD >= 1.0,
+              "%.2f bit" % ((tr[1][0] - first[0]) * BAUD))
+    c, x, tr, t = tx(rnd(100, 5), var=100, timing=timing)
+    err, stop = edge_stats(tr)
+    check("edges within 0.25 bit of ideal grid, stop bit >= 1 bit", err < 0.25 and stop >= 1.0,
+          "max edge error %.3f bit, min stop %.2f bit" % (err, stop))
+    lo = hi = 0
+    for p in range(0, 100, 5):
+        if decode(tr, 1 - p / 1000, init) != (rnd(100, 5), True):
+            break
+        lo = p
+    for p in range(0, 100, 5):
+        if decode(tr, 1 + p / 1000, init) != (rnd(100, 5), True):
+            break
+        hi = p
+    check("PC receiver may be off by +-2%", lo >= 20 and hi >= 20,
+          "tolerance -%.1f%% .. +%.1f%%" % (lo / 10, hi / 10))
+
+
+if __name__ == "__main__":
+    print("installer: %s, %d bps" % (os.path.basename(BAS), BAUD))
+    for tb in ("mame", "guide"):
+        serout_suite(tb)
+    for tb in ("mame", "guide"):
+        serin_suite(tb)
+    print("FAILURES: %d" % fails)
+    sys.exit(1 if fails else 0)

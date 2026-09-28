@@ -3,7 +3,8 @@
 Instruction semantics and cycle counts follow MAME's lh5801 core
 (src/devices/cpu/lh5801/5801tbl.hxx).  An alternative timing table
 ('guide') uses the values from the LH5801 instruction summary
-(ROR/SHR 9, ROL 8 cycles) so we can check sensitivity to cycle counts.
+(ROR/SHR 9, ROL 8 cycles, shifts change only C, not Z) so we can check
+sensitivity to cycle counts and flag behaviour.
 
 ME1 I/O: LH5811 at &F000.. ; &F00D = DDB, &F00F = port B (PB2 = CMT-IN),
 &F008 = port C (PC7 = TX out).
@@ -166,6 +167,7 @@ class CPU:
         elif op == 0x84: self.a = self.xh; self.setz(self.a); n = 5
         elif op == 0x0A: self.x = (self.x & 0xFF00) | self.a; n = 5
         elif op == 0x0E: self.m[self.x] = self.a; n = 6
+        elif op == 0x28: self.u = self.a << 8 | (self.u & 0xFF); n = 5
         elif op == 0x38: n = 5
         elif op == 0x41: self.m[self.x] = self.a; self.x = (self.x + 1) & 0xFFFF; n = 6
         elif op == 0x45:
@@ -215,14 +217,17 @@ class CPU:
         elif op == 0xD1:  # ROR
             nv = self.a
             self.a = ((self.c << 8) | nv) >> 1
-            self.c = nv & 1; self.setz(self.a); n = 9 if g else 6
+            self.c = nv & 1; n = 9 if g else 6
+            if not g: self.setz(self.a)
         elif op == 0xD5:  # SHR
             nv = self.a
-            self.a = nv >> 1; self.c = nv & 1; self.setz(self.a); n = 9 if g else 6
+            self.a = nv >> 1; self.c = nv & 1; n = 9 if g else 6
+            if not g: self.setz(self.a)
         elif op == 0xDB:  # ROL
             nv = self.a
             self.a = ((nv << 1) | self.c) & 0xFF
-            self.c = nv >> 7; self.setz(self.a); n = 8 if g else 6
+            self.c = nv >> 7; n = 8 if g else 6
+            if not g: self.setz(self.a)
         elif op == 0xDD: self.a = self.add_generic(self.a, 1, 0); n = 5
         elif op == 0xDF: self.a = self.add_generic(self.a, 0xFF, 0); n = 5
         elif op == 0xF9: self.c = 0; n = 4

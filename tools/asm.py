@@ -6,7 +6,7 @@ emitted as BASIC variables in the POKE lines.
 """
 import re
 
-SYMS = ("RH", "RL", "R1", "CN")
+SYMS = ("RH", "RL", "R1", "CN", "TH", "TL")
 
 # (mnemonic, operand-pattern) -> (opcode bytes, kind)
 # kind: None | 'imm' | 'abs' | 'rel+' | 'rel-'
@@ -42,6 +42,12 @@ TABLE = {
     ("ROR", ""): ([0xD1], None),
     ("SIN", "X"): ([0x41], None),
     ("RTN", ""): ([0x9A], None),
+    ("NOP", ""): ([0x38], None),
+    ("SHR", ""): ([0xD5], None),
+    ("LIN", "X"): ([0x45], None),
+    ("STA", "UH"): ([0x28], None),
+    ("BCS+", "L"): ([0x83], "rel+"),
+    ("ORI", "#(Y),i"): ([0xFD, 0x5B], "imm"),
 }
 
 
@@ -56,7 +62,7 @@ def parse_num(s):
 
 def classify(mn, ops):
     """Return (key, operand-string-for-imm/label)."""
-    if mn in ("BZR+", "BZS+", "BCH+", "BZR-", "BCH-"):
+    if mn in ("BZR+", "BZS+", "BCS+", "BCH+", "BZR-", "BCH-"):
         return (mn, "L"), ops
     if mn == "LOP":
         reg, lab = ops.split(",")

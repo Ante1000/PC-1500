@@ -1,12 +1,86 @@
-# Sharp PC-1500(A) – programowy UART 4800 bps (TTL-232)
+# Sharp PC-1500(A) – programowy UART 4800 / 9600 bps (TTL-232)
 
 Nadawanie (`SEROUT`) i odbiór (`SERIN`) metodą bit-banging:
-wejście **PB2** (CMT-IN, pin 27 złącza 60-pin), wyjście **PC7**, 8N1, 4800 bps,
+wejście **PB2** (CMT-IN, pin 27 złącza 60-pin), wyjście **PC7**, 8N1,
 polaryzacja TTL (spoczynek = 1).
+
+## Wersja 9600 bps (v53, gałąź `9600bps`)
 
 | Plik | Opis |
 |---|---|
-| `pc1500_uart_installer-v52.txt` | **aktualny** instalator + program testowy w BASIC-u |
+| `pc1500_uart_installer-v53-9600.txt` | instalator 9600 bps + program testowy (TX, RX, echo) |
+| `serout_v53_9600.asm`, `.lst` | nowy SEROUT 9600 (84 B, &41C5..&4218) |
+| `serin_v53_9600.asm`, `.lst` | SERIN 9600 (123 B, &422A..&42A4) |
+| `tools/build_9600.py` | asembluje oba źródła i wstawia linie POKE do instalatora |
+| `tools/test_9600.py` | testy SEROUT i SERIN przy 9600 w symulatorze |
+
+Instalacja tak jak dla v52: `NEW &42B0` w trybie PRO, `CLOAD`, `RUN`.
+Terminal w PC ustaw na **9600 8N1**. Test odbioru uruchamia `RUN 530`. Program
+pyta o M (0 = do 127 znaków) i o echo. Przy echo=1 odebrany tekst jest od razu
+odsyłany do PC przez SEROUT, więc sprawdzasz oba kierunki naraz.
+
+**Użycie** jest takie samo jak w v52:
+
+* `CALL SO` wysyła 1 znak z TX, `CALL SO,N` wysyła N znaków (1..128). N=0
+  daje 1 znak, N=129..255 daje 128. N≥256 działa jak `CALL SO` bez zmiennej
+  (1 znak), bo tych przypadków nie da się odróżnić. Zmienna N się nie zmienia.
+* `CALL SI` / `CALL SI,M` zwraca długość w `RX+0` i w M (jak w v52). Timeouty
+  30 s i 0,5 s są bez zmian.
+
+**SEROUT v53** jest napisany od nowa (v51/v52 przy 9600 miał za mały zapas):
+
+* Gałęzie dla bitu 0 i 1 mają tę samą długość, a zapis do PC7 odbywa się
+  w obu w tym samym cyklu (±1). W starym kodzie gałąź „0” była o 5 cykli
+  dłuższa, co przy 9600 to już ok. 4% bitu.
+* Bit trwa 134 / 137 cykli (tablica MAME / instrukcja LH5801), idealnie 135,4.
+  Bit stopu trwa 1,1–1,3 bitu.
+* Bity są liczone znacznikiem (sentinel) w akumulatorze, a znaki w UH, więc nie
+  ma zmiennych w pamięci. Poprawia to też błąd starego kodu, w którym
+  `CALL SO,0` wysyłało 65536 znaków.
+* Na starcie PC7 jest ustawiane w stan spoczynku (1) na ok. 1 bit przed
+  pierwszym bitem startu.
+* Zakończenie bajtu jest sprawdzane przez `BII A,&FF`, a nie flagą Z po `SHR`.
+  Według instrukcji LH5801 przesunięcia nie ustawiają Z (MAME je ustawia),
+  a symulator w trybie „instrukcja” to odwzorowuje.
+
+**SERIN v53** to kod v52 z pętlą bitu dostrojoną do 9600 (`LDI UL,5` + 2×NOP
+= 134,5 / 137,5 cyklu) i krótszym opóźnieniem do połowy bitu startu (`LDI UL,3`).
+
+**Wyniki symulacji przy 9600** (`python3 tools/test_9600.py`): wszystkie
+scenariusze z v52 przechodzą w obu tablicach cykli. Dodatkowo SEROUT: wszystkie
+256 wartości bajtu, 128 znaków, N=0/200/300, stan spoczynku przed startem,
+zbocza w granicach 0,11 bitu od idealnej siatki.
+
+| | tablica MAME | instrukcja LH5801 |
+|---|---|---|
+| SERIN: dopuszczalna odchyłka nadajnika | −3,5…+5,5% | −5,0…+3,5% |
+| SEROUT: dopuszczalna odchyłka odbiornika w PC | −4,5…+6,5% | −6,5…+4,0% |
+
+Przy 9600 zapas jest mniejszy niż przy 4800, a wersja v53 **nie była jeszcze
+sprawdzana na prawdziwym PC-1500A**. Jeśli pojawią się błędy, stałe można
+zmienić przez POKE (każda jednostka LOP = 11 cykli ≈ 8% bitu):
+
+| Adres | Domyślnie | Znaczenie |
+|---|---|---|
+| SO+41 | 7 | długość bitu startu (SEROUT) |
+| SO+59 | 5 | długość bitu danych (SEROUT) |
+| SO+75 | 10 | długość bitu stopu (SEROUT) |
+| SI+67 | 3 | opóźnienie do połowy bitu startu (SERIN) |
+| SI+78 | 5 | długość bitu (SERIN) |
+| SI+33 / SI+106 | 18 / 77 | timeout 30 s / 0,5 s (SERIN) |
+
+Między `CALL SO` a `CALL SI` BASIC potrzebuje kilku ms, co przy 9600 to kilka
+znaków. Urządzenie powinno odczekać ok. 50 ms przed odpowiedzią. 9600 bps to
+praktyczny limit tej metody: przy 19200 bit trwa ok. 68 cykli, czyli tyle, ile
+sama najkrótsza pętla bitu.
+
+---
+
+## Wersja 4800 bps (v52)
+
+| Plik | Opis |
+|---|---|
+| `pc1500_uart_installer-v52.txt` | instalator 4800 bps + program testowy w BASIC-u |
 | `serin_v52.asm`, `serin_v52.lst` | źródło i listing nowego SERIN (LH5801) |
 | `tools/` | asembler, symulator LH5801 i testy (Python 3) |
 | `pc1500_uart_installer-v51.txt` | poprzednia wersja (SERIN nie działał) |
