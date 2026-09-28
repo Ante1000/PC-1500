@@ -166,6 +166,7 @@ class CPU:
         elif op == 0x04: self.a = self.xl; self.setz(self.a); n = 5
         elif op == 0x84: self.a = self.xh; self.setz(self.a); n = 5
         elif op == 0x0A: self.x = (self.x & 0xFF00) | self.a; n = 5
+        elif op == 0x08: self.x = self.a << 8 | self.xl; n = 5
         elif op == 0x0E: self.m[self.x] = self.a; n = 6
         elif op == 0x28: self.u = self.a << 8 | (self.u & 0xFF); n = 5
         elif op == 0x38: n = 5

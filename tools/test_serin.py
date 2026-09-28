@@ -1,7 +1,8 @@
 """Test SERIN/SEROUT from a BASIC installer on the LH5801 simulator.
 
     python3 tools/test_serin.py [installer.txt] [baud]
-    (default: pc1500_uart_installer-v52.txt, 4800; see tools/test_9600.py)
+    (default: pc1500_uart_installer-v52.txt, 4800; see tools/test_9600.py
+     and tools/test_v55.py)
 
 The installer's POKE lines are evaluated (A0=&4000). SERIN is CALLed with a
 simulated 8N1 signal on PB2; SEROUT's PC7 output is decoded by a model of an
@@ -18,7 +19,7 @@ from lh5801sim import CPU, Line, load_basic  # noqa: E402
 ROOT = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 BAS = sys.argv[1] if len(sys.argv) > 1 else os.path.join(ROOT, "pc1500_uart_installer-v52.txt")
 BAUD = float(sys.argv[2]) if len(sys.argv) > 2 else 4800.0
-NEW_SEROUT = BAUD == 9600          # v53 SEROUT: N=0 -> 1, N>128 -> 128
+NEW_SEROUT = BAUD == 9600          # v53+ SEROUT: N=0 -> 1, raises PC7 itself
 STACK = (0x784E, 0x784F)            # return address pushed by the test harness
 fails = 0
 
@@ -42,6 +43,13 @@ def machine(line, timing, ro=3):
     return cpu, env
 
 
+# v55 layout: 256-byte page-aligned buffers, 16-bit RX length at RC (hi, lo);
+# older layout: length byte at RX+0, data RX+1..RX+127, TX 128 bytes.
+BIG = "RC" in machine(Line(), "mame")[1]
+RXCAP = 256 if BIG else 127
+TXCAP = 256 if BIG else (128 if NEW_SEROUT else 127)
+
+
 # ----------------------------------------------------------------- SERIN
 def rx(data=b"", t0=0.01, baud=None, gap=0.0, var=None, timing="mame",
        ro=3, line=None, stop_bits=1.0):
@@ -53,12 +61,18 @@ def rx(data=b"", t0=0.01, baud=None, gap=0.0, var=None, timing="mame",
     RX = env["RX"]
     before = bytes(cpu.m)
     c, x = cpu.call(env["SI"], xval=var, max_seconds=40)
-    n = cpu.m[RX]
+    if BIG:
+        RC = env["RC"]
+        n, data = cpu.m[RC] * 256 + cpu.m[RC + 1], RX
+        allowed = lambda a: RX <= a < RX + 256 or RC <= a <= RC + 1
+    else:
+        n, data = cpu.m[RX], RX + 1
+        allowed = lambda a: RX <= a < RX + 128
     bad = [a for a in range(0x10000) if cpu.m[a] != before[a]
-           and not RX <= a < RX + 128 and a not in STACK]
+           and not allowed(a) and a not in STACK]
     assert not bad, "memory outside RX written: %s" % [hex(a) for a in bad[:8]]
-    assert n <= 127
-    return dict(n=n, got=bytes(cpu.m[RX + 1:RX + 1 + n]), c=c, x=x, t=cpu.now())
+    assert n <= RXCAP
+    return dict(n=n, got=bytes(cpu.m[data:data + n]), c=c, x=x, t=cpu.now())
 
 
 def serin_suite(timing):
@@ -66,17 +80,17 @@ def serin_suite(timing):
     bad = [b for b in range(256) if rx(bytes([b]), timing=timing)["got"] != bytes([b])]
     check("all 256 byte values", not bad, str(bad[:8]))
     r = rx(b"A", timing=timing)
-    check("CALL SI, 1 char: RX(0)=1, exit ~0.5 s after it",
+    check("CALL SI, 1 char: length=1, exit ~0.5 s after it",
           r["n"] == 1 and r["c"] == 1 and r["x"] == 1 and 0.45 < r["t"] < 0.6, "t=%.3f s" % r["t"])
     r = rx(b"HELLO WORLD\r\n", timing=timing)
     check("string sent back-to-back", r["got"] == b"HELLO WORLD\r\n", repr(r["got"]))
-    d = rnd(127, 1)
-    check("127 random bytes back-to-back", rx(d, timing=timing)["got"] == d)
-    d = rnd(200, 2)
+    d = rnd(RXCAP, 1)
+    check("%d random bytes back-to-back" % RXCAP, rx(d, timing=timing)["got"] == d)
+    d = rnd(RXCAP + 73, 2)
     r = rx(d, timing=timing)
-    t127 = 0.01 + 127 * 10 / BAUD
-    check("200 bytes -> first 127, exit right after the 127th",
-          r["got"] == d[:127] and r["t"] < t127 + 0.005, "t=%.3f s" % r["t"])
+    tcap = 0.01 + RXCAP * 10 / BAUD
+    check("%d bytes -> first %d, exit right after the last one" % (len(d), RXCAP),
+          r["got"] == d[:RXCAP] and r["t"] < tcap + 0.005 and r["x"] == RXCAP, "t=%.3f s" % r["t"])
     r = rx(b"HELLO", var=3, timing=timing)
     check("CALL SI,M (M=3): 'HEL', immediate exit, M:=3",
           r["got"] == b"HEL" and r["x"] == 3 and r["c"] == 1 and r["t"] < 0.02, "t=%.4f s" % r["t"])
@@ -84,8 +98,14 @@ def serin_suite(timing):
     check("CALL SI,M (M=5), 2 sent: 2 chars, M:=2", r["got"] == b"HI" and r["x"] == 2)
     r = rx(b"XYZ", var=1, timing=timing)
     check("CALL SI,M (M=1)", r["got"] == b"X" and r["x"] == 1)
-    for m in (0, 127, 128, 255, 300, 0xFFFF):
-        check("CALL SI,M (M=%d) -> max 127" % m, rx(rnd(180, m), var=m, timing=timing)["n"] == 127)
+    if BIG:
+        for m, want in ((128, 128), (255, 255), (256, 256), (0, 256), (300, 256), (0xFFFF, 256)):
+            r = rx(rnd(300, m), var=m, timing=timing)
+            check("CALL SI,M (M=%d) -> %d chars, M:=%d" % (m, want, want),
+                  r["n"] == want and r["x"] == want and r["got"] == rnd(300, m)[:want])
+    else:
+        for m in (0, 127, 128, 255, 300, 0xFFFF):
+            check("CALL SI,M (M=%d) -> max 127" % m, rx(rnd(180, m), var=m, timing=timing)["n"] == 127)
     r = rx(b"", timing=timing)
     check("no data: 0 chars after ~30 s, M:=0", r["n"] == 0 and r["x"] == 0 and 28 < r["t"] < 32,
           "t=%.2f s" % r["t"])
@@ -197,15 +217,32 @@ def serout_suite(timing):
     c, x, tr, t = tx(b"HELLO", timing=timing)
     check("CALL SO sends 1 char", decode(tr, init=init)[0] == b"H")
     for seed in (1, 2):
-        d = rnd(128, seed) if NEW_SEROUT else rnd(127, seed)
+        d = rnd(TXCAP, seed)
         c, x, tr, t = tx(d, var=len(d), timing=timing)
         got, fr = decode(tr, init=init)
         check("%d random bytes" % len(d), got == d and fr)
-    d = bytes(range(128)) + bytes(range(128, 256))
-    good = decode(tx(d[:128], var=128, timing=timing)[2], init=init)[0] == d[:128] and \
-        decode(tx(d[128:], var=128, timing=timing)[2], init=init)[0] == d[128:]
+    d = bytes(range(256))
+    if BIG:
+        good = decode(tx(d, var=256, timing=timing)[2], init=init)[0] == d
+    else:
+        good = decode(tx(d[:128], var=128, timing=timing)[2], init=init)[0] == d[:128] and \
+            decode(tx(d[128:], var=128, timing=timing)[2], init=init)[0] == d[128:]
     check("all 256 byte values", good)
-    if NEW_SEROUT:
+    if BIG:
+        c, x, tr, t = tx(b"AB", var=0, timing=timing)
+        check("CALL SO,N (N=0) -> 1 char", decode(tr, init=init)[0] == b"A")
+        c, x, tr, t = tx(rnd(256, 9), var=200, timing=timing)
+        check("CALL SO,N (N=200) -> 200 chars", decode(tr, init=init)[0] == rnd(256, 9)[:200])
+        c, x, tr, t = tx(rnd(256, 8), var=300, timing=timing)
+        check("CALL SO,N (N=300) -> 256 chars", decode(tr, init=init)[0] == rnd(256, 8))
+        c, x, tr, t = tx(b"XY", var=0xFFFF, timing=timing)
+        check("CALL SO,N (N=65535, XH>=&80 = like no variable) -> 1 char",
+              decode(tr, init=init)[0] == b"X")
+        first = tr[0]
+        check("PC7 raised to idle >= 1 bit before the first start bit",
+              first[1] == 1 and tr[1][1] == 0 and (tr[1][0] - first[0]) * BAUD >= 1.0,
+              "%.2f bit" % ((tr[1][0] - first[0]) * BAUD))
+    elif NEW_SEROUT:
         c, x, tr, t = tx(b"AB", var=0, timing=timing)
         check("CALL SO,N (N=0) -> 1 char", decode(tr, init=init)[0] == b"A")
         c, x, tr, t = tx(rnd(128, 9), var=200, timing=timing)

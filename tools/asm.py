@@ -6,7 +6,7 @@ emitted as BASIC variables in the POKE lines.
 """
 import re
 
-SYMS = ("RH", "RL", "R1", "CN", "TH", "TL")
+SYMS = ("RH", "RL", "R1", "CN", "TH", "TL", "RP", "CP", "TP", "NP")
 
 # (mnemonic, operand-pattern) -> (opcode bytes, kind)
 # kind: None | 'imm' | 'abs' | 'rel+' | 'rel-'
@@ -31,6 +31,9 @@ TABLE = {
     ("LDI", "UH,i"): ([0x68], "imm"),
     ("LDI", "UL,i"): ([0x6A], "imm"),
     ("STA", "(RX)"): ([0xAE, "RH", "RL"], None),
+    ("STA", "(ab)"): ([0xAE], "abs"),
+    ("LDA", "(ab)"): ([0xA5], "abs"),
+    ("STA", "XH"): ([0x08], None),
     ("LDA", "(RX)"): ([0xA5, "RH", "RL"], None),
     ("ANI", "#(Y),i"): ([0xFD, 0x59], "imm"),
     ("BII", "#(Y),i"): ([0xFD, 0x5D], "imm"),
@@ -70,6 +73,9 @@ def classify(mn, ops):
         return (mn, "UL,L"), lab
     if ops in ("", "XH", "XL", "Y", "UH", "A", "X", "(RX)"):
         return (mn, ops), None
+    m = re.match(r"^\(([^,()]+),([^,()]+)\)$", ops)      # (hi,lo) absolute address
+    if m:
+        return (mn, "(ab)"), (m.group(1), m.group(2))
     m = re.match(r"^(#\(Y\)|A|XH|XL|YH|YL|UH|UL),(.+)$", ops)
     if m:
         return (mn, m.group(1) + ",i"), m.group(2)
@@ -102,7 +108,7 @@ def assemble(src):
             sizes.append(0)
             continue
         opc, kind = TABLE[key]
-        n = len(opc) + (1 if kind else 0)
+        n = len(opc) + {None: 0, "abs": 2}.get(kind, 1)
         sizes.append(n)
         addr += n
     # pass 2: bytes
@@ -115,6 +121,8 @@ def assemble(src):
         b = list(opc)
         if kind == "imm":
             b.append(parse_num(arg))
+        elif kind == "abs":
+            b.extend(parse_num(x) for x in arg)
         elif kind in ("rel+", "rel-"):
             target = labels[arg]
             nxt = addr + n

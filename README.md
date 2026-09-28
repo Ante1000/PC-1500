@@ -4,6 +4,32 @@ Nadawanie (`SEROUT`) i odbiór (`SERIN`) metodą bit-banging:
 wejście **PB2** (CMT-IN, pin 27 złącza 60-pin), wyjście **PC7**, 8N1,
 polaryzacja TTL (spoczynek = 1).
 
+## Wersja v55 (9600 bps, bufory po 256 znaków)
+
+| Plik | Opis |
+|---|---|
+| `pc1500_uart_installer-v55-9600.txt` | instalator v55 + program testowy (TX, RX, echo) |
+| `serout_v55.asm`, `serin_v55.asm` (+ `.lst`) | źródła; pętle bitów i czasy jak w v53 |
+| `tools/build_v55.py`, `tools/test_v55.py` | budowanie linii POKE i testy w symulatorze |
+
+Mapa pamięci (RAM od &4000), **wymaga `NEW &4400`** w trybie PRO:
+
+| Adres | Zawartość |
+|---|---|
+| &40C5 | SEROUT (84 B) |
+| &4130 | SERIN (122 B) |
+| &41FE, &41FF | RC: liczba odebranych znaków (starszy, młodszy bajt; 0–256) |
+| &4200..&42FF | RX: odebrane znaki (256 B) |
+| &4300..&43FF | TX: znaki do wysłania (256 B) |
+
+* `CALL SO,N` wysyła N = 1…256 znaków z TX (N = 0 → 1 znak, N > 256 → 256).
+* `CALL SI,M` odbiera do M = 1…256 znaków do RX (M = 0 lub > 256 → 256).
+  Liczba znaków trafia do M i do RC: `D = (PEEK RC) * 256 + PEEK (RC + 1)`.
+  Znaki: `PEEK (RX + I)` dla I = 0…D−1.
+* Licznik ma 16 bitów, bo 256 znaków nie mieści się w jednym bajcie.
+
+---
+
 ## Wersja 9600 bps (v53, gałąź `9600bps`)
 
 | Plik | Opis |

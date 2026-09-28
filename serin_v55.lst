@@ -1,0 +1,95 @@
+; SERIN v55 9600 - listing (adresy wzgledem SI = RAM+&130), 122 bajtow
+;
+                 ; =====================================================================
+                 ; SERIN v55 - programowy odbiornik UART 9600 bps 8N1 dla Sharp PC-1500(A)
+                 ; CPU LH5801 @ 1,3 MHz, wejscie PB2 (CMT-IN, pin 27 zlacza 60-pin),
+                 ; polaryzacja TTL-232 (spoczynek = 1, bit startu = 0).
+                 ;
+                 ; Wywolanie z BASIC-a:
+                 ;   CALL SI          odbierz do 256 znakow
+                 ;   CALL SI,M        odbierz najwyzej M znakow (1..256; 0 lub >256 = 256)
+                 ; Wynik:
+                 ;   RC, RC+1         liczba odebranych znakow, 16 bitow (starszy bajt pierwszy)
+                 ;   RX..RX+255       odebrane znaki (RX = poczatek strony pamieci, &4200)
+                 ;   M                (tylko przy CALL SI,M) = liczba odebranych znakow
+                 ;                    (powrot z C=1 -> ROM wpisuje X do zmiennej z CALL)
+                 ; Czas:
+                 ;   pierwszy znak musi przyjsc w ciagu ~30 s, kolejne w odstepach < ~0,5 s,
+                 ;   po M-tym (lub 127.) znaku powrot natychmiast.
+                 ;
+                 ; Adres ladowania: SI = RAM+&130 (&4130).
+                 ; Symbole wstawiane przez BASIC: RP = strona bufora RX (RX = RP*256),
+                 ; CP = RP-1 (licznik RC = CP*256+&FE), NP = 256-RP.
+                 ; Skoki: LH5801 ma osobne kody dla skokow w przod (+) i w tyl (-),
+                 ; przesuniecie jest ZAWSZE dodatnie (0..255), liczone od nastepnego rozkazu.
+                 ; Wersja 9600 (jak v53): petla bitu = 134,5 / 137,5 cyklu (tablica MAME /
+                 ; instrukcja LH5801; idealnie 135,4) i krotszy czas do polowy bitu startu.
+                 ; Pierwsza probka ok. 1,4 bitu po zboczu startu.
+                 ; Plik jest zrodlem dla tools/build_v55.py (asembler + generator POKE).
+                 ; =====================================================================
+00  FD BE                RIE                 ; bez przerwan (timing!)
+02  84                   LDA  XH             ; bez zmiennej (adres w ROM), M=256 lub M>256
+03  89 04                BZR+ MAXM           ;   -> 256 znakow
+05  04                   LDA  XL             ; CALL SI,M: X = M (1..255)
+06  DF                   DEC  A              ; r = M-1 (M = 0 -> &FF, czyli 256 znakow)
+07  8E 02                BCH+ SETM
+09  B5 FF        MAXM:   LDI  A,&FF          ; r = 255 -> 256 znakow (caly bufor)
+0B  AE CP FE     SETM:   STA  (CP,&FE)       ; RC = r (pozostalo r+1 znakow)
+0E  48 RP                LDI  XH,RP          ; X = RX (poczatek strony)
+10  4A 00                LDI  XL,0
+12  58 F0                LDI  YH,&F0         ; Y = &F00D (DDB, rejestr kierunku portu B)
+14  5A 0D                LDI  YL,&0D
+16  FD 59 FB             ANI  #(Y),&FB       ; PB2 = wejscie
+19  54                   INC  Y
+1A  54                   INC  Y              ; Y = &F00F (port B, bit 2 = CMT-IN)
+1B  68 00                LDI  UH,&00         ; timeout 1. znaku: 18*256*256 obiegow ~ 30 s
+1D  B5 12                LDI  A,18
+1F  FD 5D 04     WH:     BII  #(Y),&04       ; czekaj na stan spoczynkowy (1 = mark)
+22  89 0B                BZR+ WL             ; linia = 1 -> czekaj na bit startu
+24  88 07                LOP  UL,WH          ; 256 obiegow x 33 cykle
+26  FD 62                DEC  UH
+28  99 0B                BZR- WH
+2A  DF                   DEC  A
+2B  99 0E                BZR- WH
+2D  8E 3D                BCH+ DONE           ; timeout
+2F  FD 5D 04     WL:     BII  #(Y),&04       ; czekaj na zbocze 1->0 (bit startu)
+32  8B 0B                BZS+ START
+34  88 07                LOP  UL,WL
+36  FD 62                DEC  UH
+38  99 0B                BZR- WL
+3A  DF                   DEC  A
+3B  99 0E                BZR- WL
+3D  8E 2D                BCH+ DONE           ; timeout
+3F  6A 03        START:  LDI  UL,3           ; ~pol bitu startu
+41  88 02        HALF:   LOP  UL,HALF
+43  FD 5D 04             BII  #(Y),&04       ; srodek bitu startu: nadal 0?
+46  99 19                BZR- WL             ; nie -> zaklocenie, czekaj dalej
+48  68 08                LDI  UH,8           ; 8 bitow danych
+4A  6A 05        BIT:    LDI  UL,5           ; petla bitu: 1 bit = 135,4 cyklu
+4C  88 02        DLY:    LOP  UL,DLY
+4E  38                   NOP                 ; (dostrojenie: +10 cykli)
+4F  38                   NOP
+50  FD 5D 04             BII  #(Y),&04
+53  FB                   SEC
+54  89 01                BZR+ ONE
+56  F9                   REC
+57  D1           ONE:    ROR                 ; LSB pierwszy
+58  FD 62                DEC  UH
+5A  99 12                BZR- BIT
+5C  41                   SIN  X              ; zapisz znak, X++
+5D  A5 CP FE             LDA  (CP,&FE)       ; r = 0 -> to byl ostatni dozwolony znak
+60  8B 0A                BZS+ DONE
+62  DF                   DEC  A
+63  AE CP FE             STA  (CP,&FE)
+66  68 4D                LDI  UH,77          ; timeout miedzy znakami: 77*256 obiegow ~ 0,5 s
+68  B5 01                LDI  A,1
+6A  9E 4D                BCH- WH             ; czekaj na bit stopu i kolejny znak
+6C  84           DONE:   LDA  XH             ; liczba znakow = X - RX (0..256)
+6D  F9                   REC
+6E  B3 NP                ADI  A,NP           ; starszy bajt: XH - RP (0 lub 1)
+70  AE CP FE             STA  (CP,&FE)       ; RC   = starszy bajt
+73  08                   STA  XH             ; X = liczba znakow ...
+74  04                   LDA  XL
+75  AE CP FF             STA  (CP,&FF)       ; RC+1 = mlodszy bajt
+78  FB                   SEC                 ; ... C=1: BASIC wpisze X do zmiennej z CALL SI,M
+79  9A                   RTN
