@@ -1,12 +1,13 @@
 """Test SERIN/SEROUT from a BASIC installer on the LH5801 simulator.
 
-    python3 tools/test_serin.py [installer.txt] [baud]
-    (default: pc1500_uart_installer-v52.txt, 4800; see tools/test_9600.py
-     and tools/test_v55.py)
+    python3 tools/test_serin.py [installer.txt] [baud] [rx_bit]
+    (default: pc1500_uart_installer-v52.txt, 4800, RX on PB2; see
+     tools/test_9600.py, tools/test_v55.py and tools/test_v56.py)
 
 The installer's POKE lines are evaluated (A0=&4000). SERIN is CALLed with a
-simulated 8N1 signal on PB2; SEROUT's PC7 output is decoded by a model of an
-ideal PC UART receiver. Every scenario runs with two cycle tables (MAME core
+simulated 8N1 signal on PB2 (or on PB<rx_bit>; the other port B bits read 1,
+so reading the wrong bit fails every test); SEROUT's PC7 output is decoded
+by a model of an ideal PC UART receiver. Every scenario runs with two cycle tables (MAME core
 and the LH5801 manual, where shifts do not change the Z flag).
 """
 import os
@@ -19,6 +20,7 @@ from lh5801sim import CPU, Line, load_basic  # noqa: E402
 ROOT = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 BAS = sys.argv[1] if len(sys.argv) > 1 else os.path.join(ROOT, "pc1500_uart_installer-v52.txt")
 BAUD = float(sys.argv[2]) if len(sys.argv) > 2 else 4800.0
+RXBIT = int(sys.argv[3]) if len(sys.argv) > 3 else 2   # port B bit of the RX input
 NEW_SEROUT = BAUD == 9600          # v53+ SEROUT: N=0 -> 1, raises PC7 itself
 STACK = (0x784E, 0x784F)            # return address pushed by the test harness
 fails = 0
@@ -36,7 +38,7 @@ def rnd(n, seed):
 
 
 def machine(line, timing, ro=3):
-    cpu = CPU(line, timing=timing, read_offset=ro)
+    cpu = CPU(line, timing=timing, read_offset=ro, rx_bit=RXBIT)
     for a in range(0x10000):
         cpu.m[a] = (a * 7 + 3) & 0xFF                  # random-ish RAM
     env = load_basic(BAS, cpu, stop_line=360)
@@ -72,6 +74,8 @@ def rx(data=b"", t0=0.01, baud=None, gap=0.0, var=None, timing="mame",
            and not allowed(a) and a not in STACK]
     assert not bad, "memory outside RX written: %s" % [hex(a) for a in bad[:8]]
     assert n <= RXCAP
+    assert cpu.ddb == 0xFF ^ 1 << RXBIT, "DDB=%02X: only PB%d may become an input" % (
+        cpu.ddb, RXBIT)
     return dict(n=n, got=bytes(cpu.m[data:data + n]), c=c, x=x, t=cpu.now())
 
 
@@ -271,7 +275,7 @@ def serout_suite(timing):
 
 
 if __name__ == "__main__":
-    print("installer: %s, %d bps" % (os.path.basename(BAS), BAUD))
+    print("installer: %s, %d bps, RX on PB%d" % (os.path.basename(BAS), BAUD, RXBIT))
     for tb in ("mame", "guide"):
         serout_suite(tb)
     for tb in ("mame", "guide"):

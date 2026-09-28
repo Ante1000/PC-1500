@@ -6,7 +6,8 @@ Instruction semantics and cycle counts follow MAME's lh5801 core
 (ROR/SHR 9, ROL 8 cycles, shifts change only C, not Z) so we can check
 sensitivity to cycle counts and flag behaviour.
 
-ME1 I/O: LH5811 at &F000.. ; &F00D = DDB, &F00F = port B (PB2 = CMT-IN),
+ME1 I/O: LH5811 at &F000.. ; &F00D = DDB, &F00F = port B (RX input on
+PB2 = CMT-IN, or on another bit with rx_bit, e.g. PB0 for v56; the other bits read 1),
 &F008 = port C (PC7 = TX out).
 """
 import bisect
@@ -16,7 +17,7 @@ CLOCK_HZ = 1_300_000
 
 
 class Line:
-    """Logic level on PB2 as a function of time (seconds)."""
+    """Logic level on the RX input (PB2 or PB0) as a function of time (seconds)."""
 
     def __init__(self, idle=1):
         self.t = [0.0]
@@ -49,7 +50,7 @@ class Halt(Exception):
 
 
 class CPU:
-    def __init__(self, line, timing="mame", read_offset=3):
+    def __init__(self, line, timing="mame", read_offset=3, rx_bit=2):
         self.m = bytearray(0x10000)
         self.line = line
         self.a = 0
@@ -63,6 +64,7 @@ class CPU:
         self.pc_port = 0xFF
         self.timing = timing
         self.read_offset = read_offset   # cycles before instr end when ME1 is read
+        self.rx_bit = rx_bit             # port B bit carrying the RX line
         self.cur_len = 0
         self.tx_log = []                 # (time, level) of PC7 writes
 
@@ -73,7 +75,7 @@ class CPU:
     def io_read(self, addr):
         if addr == 0xF00F:
             t = (self.cyc + self.cur_len - self.read_offset) / CLOCK_HZ
-            return 0xFB | (self.line.level(t) << 2)
+            return (0xFF ^ 1 << self.rx_bit) | self.line.level(t) << self.rx_bit
         if addr == 0xF00D:
             return self.ddb
         if addr == 0xF008:

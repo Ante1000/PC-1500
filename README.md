@@ -1,8 +1,36 @@
 # Sharp PC-1500(A) – programowy UART 4800 / 9600 bps (TTL-232)
 
 Nadawanie (`SEROUT`) i odbiór (`SERIN`) metodą bit-banging:
-wejście **PB2** (CMT-IN, pin 27 złącza 60-pin), wyjście **PC7**, 8N1,
-polaryzacja TTL (spoczynek = 1).
+wejście **PB2** (CMT-IN, pin 27 złącza 60-pin; v52–v55) albo **PB0** (pin 9; v56),
+wyjście **PC7**, 8N1, polaryzacja TTL (spoczynek = 1).
+
+## Wersja v56 (9600 bps, bufory po 255 znaków, wejście PB0)
+
+| Plik | Opis |
+|---|---|
+| `pc1500_uart_installer-v56-9600-PB0.txt` | instalator v56 + program testowy (TX, RX, echo) |
+| `serin_v56.asm` (+ `.lst`) | SERIN v55 z wejściem PB0; SEROUT bez zmian (`serout_v55.asm`) |
+| `tools/build_v56.py`, `tools/test_v56.py` | budowanie linii POKE i testy w symulatorze (RX na PB0) |
+
+v56 to v55 z odbiorem na **PB0** (&F00F bit 0, pin 9 złącza 60-pin) zamiast
+PB2 (CMT-IN). Różni się tylko 5 bajtami SERIN: `ANI #(Y),&FE` (SI+26, PB0 jako
+wejście) i `BII #(Y),&01` (SI+35, +51, +71, +84). Czasy, długość kodu, mapa
+pamięci, adresy SO/SI/RC/RX/TX i sposób użycia są takie same jak w v55.
+
+* Na PB0 daj **rezystor podciągający 10 kΩ do VCC**. PB0 to wejście CMOS
+  układu LH5811 bez podciągania, więc bez adaptera linia „pływa”.
+  Zabezpieczenie wejścia (dioda Schottky'ego / rezystor) jak dla PB2.
+* Według TRM pin 9 (PB0) może być niepodłączony w części egzemplarzy
+  (zależnie od miesiąca produkcji). Sprawdź omomierzem połączenie pinu 9
+  złącza z nóżką 9 układu LH5811.
+* Wyjście TX (PC7) i SEROUT są bez zmian.
+* Program testowy (`RUN 530`) sprawdza, czy w pamięci jest kod v56. Jeśli
+  zostało tam SERIN dla PB2 (v55), wyświetla `PB2 CODE! RUN 10`.
+* Polaryzacja jest taka sama jak w v55 (spoczynek = 1). Zwykły adapter
+  USB–TTL podłącza się bez odwracania sygnału, tylko do pinu 9 zamiast 27.
+* Symulator ma teraz wybór bitu wejścia: `tools/test_serin.py <instalator>
+  <baud> <bit>`. Pozostałe bity portu B czytają się jako 1, więc kod
+  czytający zły bit nie przejdzie żadnego testu.
 
 ## Wersja v55 (9600 bps, bufory po 255 znaków)
 
