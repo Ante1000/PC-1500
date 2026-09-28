@@ -1,6 +1,6 @@
 """Build the 9600 bps version: assemble serout_v53_9600.asm and
 serin_v53_9600.asm, write their .lst listings and refresh the POKE lines
-in pc1500_uart_installer-v53-9600.txt (SEROUT: 170..265, SERIN: 280..355).
+in pc1500_uart_installer-v54-9600.txt (SEROUT: 170..265, SERIN: 280..355).
 
     python3 tools/build_9600.py
 """
@@ -10,7 +10,7 @@ import sys
 sys.path.insert(0, os.path.dirname(__file__))
 from build_serin import ROOT, poke_lines, update_installer, write_listing  # noqa: E402
 
-BAS = os.path.join(ROOT, "pc1500_uart_installer-v53-9600.txt")
+BAS = os.path.join(ROOT, "pc1500_uart_installer-v54-9600.txt")
 PARTS = [
     # source, variable, first, step, last, title, base
     ("serout_v53_9600", "SO", 170, 10, 265, "SEROUT v53 9600", "SO = RAM+&1C5"),

@@ -8,7 +8,8 @@ polaryzacja TTL (spoczynek = 1).
 
 | Plik | Opis |
 |---|---|
-| `pc1500_uart_installer-v53-9600.txt` | instalator 9600 bps + program testowy (TX, RX, echo) |
+| `pc1500_uart_installer-v54-9600.txt` | **aktualny** instalator 9600 bps + program testowy (TX, RX, echo) |
+| `pc1500_uart_installer-v53-9600.txt` | pierwsza wersja 9600, **sprawdzona na PC-1500A** (ten sam kod maszynowy co v54) |
 | `serout_v53_9600.asm`, `.lst` | nowy SEROUT 9600 (84 B, &41C5..&4218) |
 | `serin_v53_9600.asm`, `.lst` | SERIN 9600 (123 B, &422A..&42A4) |
 | `tools/build_9600.py` | asembluje oba źródła i wstawia linie POKE do instalatora |
@@ -18,6 +19,14 @@ Instalacja tak jak dla v52: `NEW &42B0` w trybie PRO, `CLOAD`, `RUN`.
 Terminal w PC ustaw na **9600 8N1**. Test odbioru uruchamia `RUN 530`. Program
 pyta o M (0 = do 127 znaków) i o echo. Przy echo=1 odebrany tekst jest od razu
 odsyłany do PC przez SEROUT, więc sprawdzasz oba kierunki naraz.
+
+v54 różni się od v53 tylko programem w BASIC-u:
+
+* Teksty PRINT mają najwyżej 22 znaki, a pytania INPUT 13–18. Wpisywana
+  odpowiedź mieści się w tej samej linii wyświetlacza.
+* Odebrany tekst jest wyświetlany po 26 znaków w linii (`DIM B$(0)*26`,
+  linia 535; zwykła zmienna napisowa mieści tylko 16 znaków).
+* Informacje po instalacji są widoczne ok. 2 s (`WAIT 128`).
 
 **Użycie** jest takie samo jak w v52:
 
