@@ -37,9 +37,22 @@ takie same jak w v55.
   `NOT PB0 CODE! RUN 10` albo `NOT PB1 CODE! RUN 10`.
 * Polaryzacja jest taka sama jak w v55 (spoczynek = 1). Zwykły adapter
   USB–TTL podłącza się bez odwracania sygnału, tylko do pinu 9 lub 39 zamiast 27.
-* Symulator ma teraz wybór bitu wejścia: `tools/test_serin.py <instalator>
-  <baud> <bit>`. Pozostałe bity portu B czytają się jako 1, więc kod
-  czytający zły bit nie przejdzie żadnego testu.
+* Konfiguracja wejścia jest taka sama jak dla PB2. `ANI #(&F00D)` zeruje w DDB
+  tylko bit swojego wejścia; według TRM 0 oznacza wejście, a odczyt &F00F
+  zwraca wtedy stan nóżki. ROM PC-1500 wpisuje do DDB wyłącznie &00, więc
+  port B i tak jest zawsze wejściem i nic w komputerze nie steruje PB0 ani PB1.
+* Szybki test pinu bez SERIN (adapter podłączony, w spoczynku):
+  `PRINT PEEK# &F00F AND 2` daje 2 dla PB1 (dla PB0 `AND 1` daje 1, dla PB2
+  `AND 4` daje 4). Po zwarciu pinu do GND wynik ma być 0. Jeśli wynik się nie
+  zmienia, pin nie dochodzi do LH5811 albo przewód jest na złym pinie.
+  Pin 39 leży w drugim rzędzie naprzeciwko pinu 9; w numeracji artykułu
+  M+K to „tył 22”.
+* Symulator ma wybór bitu wejścia: `tools/test_serin.py <instalator> <baud>
+  <bit>`. Pozostałe nóżki portu B czytają się jako 1, a bit ustawiony w DDB
+  jako wyjście zwraca zatrzask OPB, jak w LH5811. Test przechodzi więc tylko
+  wtedy, gdy SERIN sam ustawi swój bit jako wejście i czyta właściwy bit.
+  v55 (PB2) i v56 PB1 dają identyczne wyniki (82 × OK, tolerancja
+  −3,5…+5,5% / −5,0…+3,5%).
 
 ## Wersja v55 (9600 bps, bufory po 255 znaków)
 

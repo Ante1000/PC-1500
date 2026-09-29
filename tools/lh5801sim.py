@@ -7,7 +7,11 @@ Instruction semantics and cycle counts follow MAME's lh5801 core
 sensitivity to cycle counts and flag behaviour.
 
 ME1 I/O: LH5811 at &F000.. ; &F00D = DDB, &F00F = port B (RX input on
-PB2 = CMT-IN, or on another bit with rx_bit, e.g. PB0 for v56; the other bits read 1),
+PB2 = CMT-IN, or on another bit with rx_bit, e.g. PB0/PB1 for v56; the other
+pins read 1). As in the LH5811 TRM (and MAME's lh5810), a port B bit whose DDB
+bit is 1 (output) reads back the OPB latch, not the pin, so SERIN only sees
+the line after it has made its bit an input. DDB starts at &FF (all outputs,
+latch 0) - the worst case; the PC-1500 ROM itself always keeps DDB = &00.
 &F008 = port C (PC7 = TX out).
 """
 import bisect
@@ -61,6 +65,7 @@ class CPU:
         self.ie = 1
         self.cyc = 0
         self.ddb = 0xFF
+        self.opb = 0x00                  # port B output latch
         self.pc_port = 0xFF
         self.timing = timing
         self.read_offset = read_offset   # cycles before instr end when ME1 is read
@@ -75,7 +80,8 @@ class CPU:
     def io_read(self, addr):
         if addr == 0xF00F:
             t = (self.cyc + self.cur_len - self.read_offset) / CLOCK_HZ
-            return (0xFF ^ 1 << self.rx_bit) | self.line.level(t) << self.rx_bit
+            pins = (0xFF ^ 1 << self.rx_bit) | self.line.level(t) << self.rx_bit
+            return (self.opb & self.ddb) | (pins & ~self.ddb & 0xFF)
         if addr == 0xF00D:
             return self.ddb
         if addr == 0xF008:
@@ -85,6 +91,8 @@ class CPU:
     def io_write(self, addr, v):
         if addr == 0xF00D:
             self.ddb = v
+        elif addr == 0xF00F:
+            self.opb = v
         elif addr == 0xF008:
             self.pc_port = v
             self.tx_log.append((self.now(), v >> 7 & 1))
