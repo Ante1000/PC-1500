@@ -16,8 +16,8 @@ wejście **PB0** (pin 9 złącza 60-pin) lub **PB2** (CMT-IN, pin 27), wyjście 
 
 | Pytanie | Odpowiedź |
 |---|---|
-| `BAUD RATE (DEFAULT4800)` | `1` = 1200, `2` = 2400, `4` = 4800, `9` = 9600, samo ENTER = 4800 |
-| `RX PORT PB (DEFAULT0)` | `0` lub samo ENTER = PB0 (pin 9), `2` = PB2 (CMT-IN, pin 27) |
+| `BAUDRATE (DEFAULT 4800)` | `1` = 1200, `2` = 2400, `4` = 4800, `9` = 9600, samo ENTER = 4800 |
+| `RX PORT (DEFAULT PB0)` | `0` lub samo ENTER = PB0 (pin 9), `2` = PB2 (CMT-IN, pin 27) |
 
 Przy innej odpowiedzi instalator piszczy i pyta ponownie. Samo ENTER zostawia
 wartość domyślną, bo ROM PC-1500 przy pustym INPUT nie zmienia zmiennej i pomija
@@ -59,6 +59,21 @@ Wyniki symulatora (tolerancja szybkości nadawcy przy odbiorze, tablice MAME / i
 | 2400 | −5,0…+5,5% / −5,5…+5,0% | 1,11 / 1,16 bitu |
 | 4800 | −4,5…+5,5% / −5,5…+4,5% | 1,11 / 1,21 bitu |
 | 9600 | −3,5…+5,5% / −5,0…+3,5% | 1,14 / 1,34 bitu |
+
+**4800 bps w porównaniu z v52** (pomiar w symulatorze, tablica MAME / instrukcja;
+idealny bit = 270,8 cykla):
+
+| | v52 (stary SEROUT, SERIN v52) | v6.0 (KB = 17, KH = 12, KT = 26) |
+|---|---|---|
+| TX: średni bit danych | 266,0 / 268,6 cykla (−1,8 / −0,8%) | 266,0 / 269,0 cykla (−1,8 / −0,7%) |
+| TX: rozrzut bitów | 254–274 cykli (gałęzie 0/1 nierówne) | 265–267 / 268–270 cykli |
+| TX: bit stopu | ok. 2,1 bitu | ok. 1,3 bitu |
+| RX: bit | 279 / 282 cykle (+3,0 / +4,1%) | 267 / 270 cykli (−1,4 / −0,3%) |
+| RX: próbka bitu 0 / bitu 7 (idealnie 1,5 / 8,5) | 1,36–1,47 / 8,57–8,76 | 1,52–1,63 / 8,42–8,61 |
+| RX: najmniejszy zapas do granicy bitu | 0,31 / 0,24 bitu | 0,37 / 0,37 bitu |
+
+Nadawanie ma więc ten sam średni bit co sprawdzony na sprzęcie stary SEROUT, a
+równiejsze bity i krótszy stop. Odbiór jest bliżej ideału niż w v52.
 
 **Program testowy:**
 
