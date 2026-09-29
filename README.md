@@ -1,33 +1,42 @@
 # Sharp PC-1500(A) – programowy UART 4800 / 9600 bps (TTL-232)
 
 Nadawanie (`SEROUT`) i odbiór (`SERIN`) metodą bit-banging:
-wejście **PB2** (CMT-IN, pin 27 złącza 60-pin; v52–v55) albo **PB0** (pin 9; v56),
+wejście **PB2** (CMT-IN, pin 27 złącza 60-pin; v52–v55), **PB0** (pin 9) lub **PB1** (pin 39; v56),
 wyjście **PC7**, 8N1, polaryzacja TTL (spoczynek = 1).
 
-## Wersja v56 (9600 bps, bufory po 255 znaków, wejście PB0)
+## Wersja v56 (9600 bps, bufory po 255 znaków, wejście PB0 lub PB1)
 
 | Plik | Opis |
 |---|---|
-| `pc1500_uart_installer-v56-9600-PB0.txt` | instalator v56 + program testowy (TX, RX, echo) |
-| `serin_v56.asm` (+ `.lst`) | SERIN v55 z wejściem PB0; SEROUT bez zmian (`serout_v55.asm`) |
-| `tools/build_v56.py`, `tools/test_v56.py` | budowanie linii POKE i testy w symulatorze (RX na PB0) |
+| `pc1500_uart_installer-v56-9600-PB0.txt` | instalator v56, RX na **PB0** (pin 9) + program testowy (TX, RX, echo) |
+| `pc1500_uart_installer-v56-9600-PB1.txt` | instalator v56, RX na **PB1** (pin 39) + program testowy |
+| `serin_v56.asm`, `serin_v56_pb1.asm` (+ `.lst`) | SERIN v55 z wejściem PB0 / PB1; SEROUT bez zmian (`serout_v55.asm`) |
+| `tools/build_v56.py`, `tools/test_v56.py` | budowanie obu wariantów i testy w symulatorze (`test_v56.py PB1` = tylko PB1) |
 
-v56 to v55 z odbiorem na **PB0** (&F00F bit 0, pin 9 złącza 60-pin) zamiast
-PB2 (CMT-IN). Różni się tylko 5 bajtami SERIN: `ANI #(Y),&FE` (SI+26, PB0 jako
-wejście) i `BII #(Y),&01` (SI+35, +51, +71, +84). Czasy, długość kodu, mapa
-pamięci, adresy SO/SI/RC/RX/TX i sposób użycia są takie same jak w v55.
+v56 to v55 z odbiorem na **PB0** lub **PB1** zamiast PB2 (CMT-IN). Warianty
+różnią się od v55 tylko 5 bajtami SERIN:
 
-* Na PB0 daj **rezystor podciągający 10 kΩ do VCC**. PB0 to wejście CMOS
+| Wejście | Pin złącza 60-pin | Nóżka LH5811 | SI+26 (`ANI`, DDB) | SI+35, +51, +71, +84 (`BII`) |
+|---|---|---|---|---|
+| PB2 (v55) | 27 (CMT-IN) | 11 | &FB | 4 |
+| PB0 | 9 | 9 | &FE | 1 |
+| PB1 | 39 | 10 | &FD | 2 |
+
+Czasy, długość kodu, mapa pamięci, adresy SO/SI/RC/RX/TX i sposób użycia są
+takie same jak w v55.
+
+* Na PB0/PB1 daj **rezystor podciągający 10 kΩ do VCC**. To wejścia CMOS
   układu LH5811 bez podciągania, więc bez adaptera linia „pływa”.
   Zabezpieczenie wejścia (dioda Schottky'ego / rezystor) jak dla PB2.
-* Według TRM pin 9 (PB0) może być niepodłączony w części egzemplarzy
-  (zależnie od miesiąca produkcji). Sprawdź omomierzem połączenie pinu 9
-  złącza z nóżką 9 układu LH5811.
+* Według TRM piny 9 (PB0) i 39 (PB1) mogą być niepodłączone w części
+  egzemplarzy (zależnie od miesiąca produkcji). Sprawdź omomierzem
+  połączenie pinu złącza z odpowiednią nóżką układu LH5811.
 * Wyjście TX (PC7) i SEROUT są bez zmian.
-* Program testowy (`RUN 530`) sprawdza, czy w pamięci jest kod v56. Jeśli
-  zostało tam SERIN dla PB2 (v55), wyświetla `PB2 CODE! RUN 10`.
+* Program testowy (`RUN 530`) sprawdza, czy w pamięci jest SERIN dla
+  właściwego wejścia. Jeśli nie (np. zostało tam SERIN v55 dla PB2), wyświetla
+  `NOT PB0 CODE! RUN 10` albo `NOT PB1 CODE! RUN 10`.
 * Polaryzacja jest taka sama jak w v55 (spoczynek = 1). Zwykły adapter
-  USB–TTL podłącza się bez odwracania sygnału, tylko do pinu 9 zamiast 27.
+  USB–TTL podłącza się bez odwracania sygnału, tylko do pinu 9 lub 39 zamiast 27.
 * Symulator ma teraz wybór bitu wejścia: `tools/test_serin.py <instalator>
   <baud> <bit>`. Pozostałe bity portu B czytają się jako 1, więc kod
   czytający zły bit nie przejdzie żadnego testu.
