@@ -1,12 +1,13 @@
 """Tiny two-pass assembler for the SERIN routine (LH5801 subset).
 
 Each source line: [LABEL:] MNEMONIC [OPERANDS] [; comment]
-Symbolic byte operands (RH, RL, R1, CN) are kept symbolic so they can be
+Symbolic byte operands (SYMS below) are kept symbolic so they can be
 emitted as BASIC variables in the POKE lines.
 """
 import re
 
-SYMS = ("RH", "RL", "R1", "CN", "TH", "TL", "RP", "CP", "TP")
+SYMS = ("RH", "RL", "R1", "CN", "TH", "TL", "RP", "CP", "TP",
+        "KI", "KS", "KB", "KT", "KH", "DB", "BM")   # v6.0: speed and RX port set by BASIC
 
 # (mnemonic, operand-pattern) -> (opcode bytes, kind)
 # kind: None | 'imm' | 'abs' | 'rel+' | 'rel-'

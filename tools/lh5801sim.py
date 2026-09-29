@@ -264,16 +264,72 @@ class CPU:
             return self.c, self.x
 
 
-# --- tiny BASIC loader: evaluates assignments and POKE statements --------
+# --- tiny BASIC loader: evaluates assignments, POKE, INPUT and IF -------
 def basic_eval(expr, env):
     e = expr.strip()
     e = re.sub(r"&([0-9A-Fa-f]+)", lambda mm: str(int(mm.group(1), 16)), e)
     e = re.sub(r"PEEK\s*30819", "64", e)                  # PEEK &7863 -> &40
-    e = e.replace("INT(", "int(").replace("<>", "!=")
+    e = re.sub(r"INT\s*\(", "int(", e).replace("<>", "!=")
     return int(eval(e, {"int": int}, dict(env)))
 
 
-def load_basic(path, cpu, stop_line=None):
+def basic_cond(expr, env):
+    """IF condition: = <> < > <= >= combined with AND / OR."""
+    e = re.sub(r"(?<![<>!=])=(?!=)", "==", expr.replace("<>", "!="))
+    e = re.sub(r"\bAND\b", " and ", re.sub(r"\bOR\b", " or ", e))
+    return bool(basic_eval(e, env))
+
+
+class BasicJump(Exception):
+    """The installer took a GOTO/END before the POKE lines (e.g. bad input)."""
+
+
+def run_statements(stmts, env, cpu, inputs, num):
+    """Execute statements of one line; returns False to skip the rest of it."""
+    for stmt in stmts:
+        s = stmt.strip()
+        if s.startswith("REM"):
+            return False
+        if s.startswith("IF "):
+            m = re.match(r"^IF\s+(.+?)\s*(?:THEN\s+|(?=LET\s|PRINT|BEEP|GOTO|END))(.*)$", s)
+            assert m, (num, s)
+            try:
+                ok = basic_cond(m.group(1), env)
+            except Exception:
+                return False          # unknown values (e.g. PEEK of BASIC pointers)
+            if not ok:
+                return False          # false condition: rest of the line is skipped
+            s = m.group(2).strip()
+        if re.match(r"^(GOTO|END)\b|^\d+$", s):
+            raise BasicJump("line %s: %s" % (num, s))
+        if s.startswith("INPUT"):
+            var = re.split(r"[;,]", s)[-1].strip()
+            if inputs is None or var not in inputs:
+                return False          # ENTER alone: variable unchanged, rest of line skipped
+            env[var] = inputs[var]
+            continue
+        if s.startswith("POKE "):
+            args = split_args(s[5:])
+            addr = basic_eval(args[0], env)
+            for i, a in enumerate(args[1:]):
+                v = basic_eval(a, env)
+                assert 0 <= v <= 255, (num, a, v)
+                cpu.m[addr + i] = v
+            continue
+        m = re.match(r"^(?:LET\s+)?([A-Z][A-Z0-9]?)\s*=\s*(.+)$", s)
+        if m:
+            try:
+                env[m.group(1)] = basic_eval(m.group(2), env)
+            except Exception:
+                pass
+    return True
+
+
+def load_basic(path, cpu, stop_line=None, inputs=None):
+    """Run the installer lines below stop_line (straight through, no jumps).
+    inputs: values typed at INPUT prompts, {var: value}; a missing var means
+    ENTER alone (the PC-1500 ROM then keeps the variable and skips the rest
+    of the line)."""
     env = {}
     for raw in open(path, encoding="ascii"):
         raw = raw.rstrip("\n")
@@ -282,23 +338,7 @@ def load_basic(path, cpu, stop_line=None):
         num, _, body = raw.partition(" ")
         if stop_line is not None and int(num) >= stop_line:
             break
-        for stmt in split_statements(body):
-            s = stmt.strip()
-            if s.startswith("REM"):
-                break
-            if s.startswith("POKE "):
-                args = split_args(s[5:])
-                addr = basic_eval(args[0], env)
-                for i, a in enumerate(args[1:]):
-                    v = basic_eval(a, env)
-                    assert 0 <= v <= 255, (num, a, v)
-                    cpu.m[addr + i] = v
-            m = re.match(r"^(?:LET\s+)?([A-Z][A-Z0-9]?)\s*=\s*(.+)$", s)
-            if m and not s.startswith("IF"):
-                try:
-                    env[m.group(1)] = basic_eval(m.group(2), env)
-                except Exception:
-                    pass
+        run_statements(split_statements(body), env, cpu, inputs, num)
     return env
 
 

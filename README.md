@@ -1,8 +1,75 @@
-# Sharp PC-1500(A) – programowy UART 4800 / 9600 bps (TTL-232)
+# Sharp PC-1500(A) – programowy UART 1200–9600 bps (TTL-232)
 
 Nadawanie (`SEROUT`) i odbiór (`SERIN`) metodą bit-banging:
-wejście **PB2** (CMT-IN, pin 27 złącza 60-pin; v52–v55), **PB0** (pin 9) lub **PB1** (pin 39; v56),
-wyjście **PC7**, 8N1, polaryzacja TTL (spoczynek = 1).
+wejście **PB0** (pin 9 złącza 60-pin) lub **PB2** (CMT-IN, pin 27), wyjście **PC7**,
+8N1, polaryzacja TTL (spoczynek = 1).
+
+## Wersja v6.0 (1200 / 2400 / 4800 / 9600 bps, wejście PB0 lub PB2)
+
+| Plik | Opis |
+|---|---|
+| `pc1500_uart_installer-v6.0.txt` | instalator v6.0 + program testowy (TX, RX, echo) |
+| `serout_v60.asm`, `serin_v60.asm` (+ `.lst`) | źródła; kod jak w v55/v56, stałe czasowe i maski ustawia instalator |
+| `tools/build_v60.py`, `tools/test_v60.py` | budowanie linii POKE i testy w symulatorze dla każdej szybkości i portu |
+
+**Instalacja:** `NEW &4400` w trybie PRO, `CLOAD`, `RUN`. Instalator zadaje dwa pytania:
+
+| Pytanie | Odpowiedź |
+|---|---|
+| `BAUD RATE (DEFAULT4800)` | `1` = 1200, `2` = 2400, `4` = 4800, `9` = 9600, samo ENTER = 4800 |
+| `RX PORT PB (DEFAULT0)` | `0` lub samo ENTER = PB0 (pin 9), `2` = PB2 (CMT-IN, pin 27) |
+
+Przy innej odpowiedzi instalator piszczy i pyta ponownie. Samo ENTER zostawia
+wartość domyślną, bo ROM PC-1500 przy pustym INPUT nie zmienia zmiennej i pomija
+resztę linii. Szybkość lub port zmienisz, uruchamiając instalator jeszcze raz (`RUN`).
+
+**Użycie** (adresy dla RAM od &4000, jak w v55):
+
+| Wywołanie | Działanie |
+|---|---|
+| `CALL &40C5` | wysyła 1 znak (pierwszy z bufora TX, &4300) |
+| `CALL &40C5,N` | wysyła N znaków z TX (1…255; 0 → 1 znak, > 255 → 255); N się nie zmienia |
+| `CALL &4130` | odbiera do 255 znaków do RX (&4200); długość w RC: `PEEK &41FF` |
+| `CALL &4130,M` | odbiera najwyżej M znaków (0 lub > 255 → 255); długość w RC i w M |
+
+Pierwszy znak musi przyjść w ciągu ok. 30 s, kolejne w odstępach < 0,5 s. Oba
+czasy nie zależą od szybkości. Mapa pamięci jest taka sama jak w v55 (RC &41FF,
+RX &4200..&42FE, TX &4300..&43FE, SO &40C5, SI &4130).
+
+**Stałe czasowe** (wpisywane przez instalator w linie POKE jako zmienne BASIC-a):
+
+| bps | KB (bit) | KH (pół bitu) | KT (stop) | KS = KB+2 (start) | KI = KB+7 (spoczynek) |
+|---|---|---|---|---|---|
+| 1200 | 91 | 47 | 106 | 93 | 98 |
+| 2400 | 42 | 21 | 50 | 44 | 49 |
+| 4800 | 17 | 12 | 26 | 19 | 24 |
+| 9600 | 5 | 3 | 10 | 7 | 12 |
+
+Porty: PB0 → `DB` = &FE, `BM` = 1; PB2 → `DB` = &FB, `BM` = 4. Przy 9600 kod jest
+bajt w bajt taki jak v55 (PB2) i v56 (PB0), czyli wersje sprawdzone na PC-1500A.
+KH dobrałem w symulatorze tak, żeby tolerancja odbioru była wyśrodkowana dla obu
+tablic cykli, a KT tak, żeby ramka nadawana miała co najmniej 10,1 bitu (bit stopu
+ok. 1,1 bitu także wtedy, gdy bity danych są odrobinę za krótkie).
+
+Wyniki symulatora (tolerancja szybkości nadawcy przy odbiorze, tablice MAME / instrukcja):
+
+| bps | odbiór | bit stopu przy nadawaniu |
+|---|---|---|
+| 1200 | −5,5…+5,5% / −5,5…+5,5% | 1,10 / 1,13 bitu |
+| 2400 | −5,0…+5,5% / −5,5…+5,0% | 1,11 / 1,16 bitu |
+| 4800 | −4,5…+5,5% / −5,5…+4,5% | 1,11 / 1,21 bitu |
+| 9600 | −3,5…+5,5% / −5,0…+3,5% | 1,14 / 1,34 bitu |
+
+**Program testowy:**
+
+* Test TX wysyła najpierw `H` (`CALL SO`), a potem `_HELLO` (`CALL SO,N`, N = 6),
+  więc w terminalu widać `H_HELLO` zamiast sklejonego `HHELLO`.
+* Test RX (`RUN 530`) sam odczytuje z kodu zainstalowaną szybkość i port i pokazuje
+  je w linii `WAITING 4800 PB0...`. Gdy w pamięci nie ma kodu v6.0, wyświetla
+  `NO v6.0 CODE! RUN 10`.
+* Terminal w PC ustaw na tę samą szybkość, 8N1.
+
+Na PB0 daj rezystor podciągający 10 kΩ do VCC (patrz v56).
 
 ## Wersja v56 (9600 bps, bufory po 255 znaków, wejście PB0 lub PB1)
 

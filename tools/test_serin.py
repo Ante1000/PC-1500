@@ -2,7 +2,10 @@
 
     python3 tools/test_serin.py [installer.txt] [baud] [rx_bit]
     (default: pc1500_uart_installer-v52.txt, 4800, RX on PB2; see
-     tools/test_9600.py, tools/test_v55.py and tools/test_v56.py)
+     tools/test_9600.py, tools/test_v55.py, tools/test_v56.py, tools/test_v60.py)
+
+v6.0 asks for the speed and the RX port at INPUT prompts: the answers
+(B = 1/2/4/9, P = rx_bit) are derived from [baud] and [rx_bit].
 
 The installer's POKE lines are evaluated (A0=&4000). SERIN is CALLed with a
 simulated 8N1 signal on PB2 (or on PB<rx_bit>; the other port B bits read 1,
@@ -21,7 +24,7 @@ ROOT = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 BAS = sys.argv[1] if len(sys.argv) > 1 else os.path.join(ROOT, "pc1500_uart_installer-v52.txt")
 BAUD = float(sys.argv[2]) if len(sys.argv) > 2 else 4800.0
 RXBIT = int(sys.argv[3]) if len(sys.argv) > 3 else 2   # port B bit of the RX input
-NEW_SEROUT = BAUD == 9600          # v53+ SEROUT: N=0 -> 1, raises PC7 itself
+INPUTS = {"B": {1200: 1, 2400: 2, 4800: 4, 9600: 9}.get(int(BAUD)), "P": RXBIT}   # v6.0 prompts
 STACK = (0x784E, 0x784F)            # return address pushed by the test harness
 fails = 0
 
@@ -41,7 +44,7 @@ def machine(line, timing, ro=3):
     cpu = CPU(line, timing=timing, read_offset=ro, rx_bit=RXBIT)
     for a in range(0x10000):
         cpu.m[a] = (a * 7 + 3) & 0xFF                  # random-ish RAM
-    env = load_basic(BAS, cpu, stop_line=360)
+    env = load_basic(BAS, cpu, stop_line=360, inputs=INPUTS)
     return cpu, env
 
 
@@ -49,6 +52,7 @@ def machine(line, timing, ro=3):
 # older layout: length byte at RX+0, data RX+1..RX+127, TX 128 bytes.
 BIG = "RC" in machine(Line(), "mame")[1]
 RXCAP = 255 if BIG else 127
+NEW_SEROUT = BAUD == 9600 or BIG  # v53+ SEROUT: N=0 -> 1, raises PC7 itself
 TXCAP = 255 if BIG else (128 if NEW_SEROUT else 127)
 
 
@@ -97,7 +101,8 @@ def serin_suite(timing):
           r["got"] == d[:RXCAP] and r["t"] < tcap + 0.005 and r["x"] == RXCAP, "t=%.3f s" % r["t"])
     r = rx(b"HELLO", var=3, timing=timing)
     check("CALL SI,M (M=3): 'HEL', immediate exit, M:=3",
-          r["got"] == b"HEL" and r["x"] == 3 and r["c"] == 1 and r["t"] < 0.02, "t=%.4f s" % r["t"])
+          r["got"] == b"HEL" and r["x"] == 3 and r["c"] == 1 and r["t"] < 0.01 + 35 / BAUD,
+          "t=%.4f s" % r["t"])
     r = rx(b"HI", var=5, timing=timing)
     check("CALL SI,M (M=5), 2 sent: 2 chars, M:=2", r["got"] == b"HI" and r["x"] == 2)
     r = rx(b"XYZ", var=1, timing=timing)
