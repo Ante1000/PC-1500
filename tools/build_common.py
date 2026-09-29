@@ -1,9 +1,6 @@
-"""Assemble serin_v52.asm, write serin_v52.lst and refresh the SERIN POKE
-lines (280..355) in the BASIC installer.
-
-    python3 tools/build_serin.py [installer.txt]
-
-The helpers are also used by tools/build_9600.py.
+"""Shared helpers for the build scripts (tools/build_v60.py, tools/build_v61.py):
+assemble a source, turn the code into BASIC POKE lines, write the .lst listing
+and replace the POKE lines in an installer.
 """
 import os
 import sys
@@ -12,11 +9,6 @@ sys.path.insert(0, os.path.dirname(__file__))
 from asm import assemble  # noqa: E402
 
 ROOT = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
-SRC = os.path.join(ROOT, "serin_v52.asm")
-LST = os.path.join(ROOT, "serin_v52.lst")
-BAS = os.path.join(ROOT, "pc1500_uart_installer-v52.txt")
-
-FIRST, STEP, LAST = 280, 5, 355          # line numbers reserved for SERIN POKEs
 
 
 def b2s(b):
@@ -25,7 +17,7 @@ def b2s(b):
     return "&%02X" % b if b > 9 else str(b)
 
 
-def poke_lines(src=SRC, var="SI", first=FIRST, step=STEP, last=LAST):
+def poke_lines(src, var, first, step, last):
     code, labels, listing = assemble(open(src, encoding="utf-8").read())
     lines, n = [], first
     for i in range(0, len(code), 10):
@@ -36,7 +28,7 @@ def poke_lines(src=SRC, var="SI", first=FIRST, step=STEP, last=LAST):
     return code, labels, listing, lines
 
 
-def write_listing(code, labels, listing, lst=LST, title="SERIN v52", base="SI = RAM+&22A"):
+def write_listing(code, labels, listing, lst, title, base):
     out = ["; %s - listing (adresy wzgledem %s), %d bajtow" % (title, base, len(code)), ";"]
     for addr, b, raw in listing:
         hexes = " ".join(x if isinstance(x, str) else "%02X" % x for x in b)
@@ -47,7 +39,7 @@ def write_listing(code, labels, listing, lst=LST, title="SERIN v52", base="SI = 
     open(lst, "w", encoding="utf-8", newline="\n").write("\n".join(out) + "\n")
 
 
-def update_installer(path, lines, first=FIRST, last=LAST):
+def update_installer(path, lines, first, last):
     old = [l.rstrip("\n") for l in open(path, encoding="ascii") if l.strip()]
     keep = [l for l in old if not (first <= int(l.split(" ", 1)[0]) <= last)]
     new = sorted(keep + lines, key=lambda l: int(l.split(" ", 1)[0]))
@@ -55,10 +47,3 @@ def update_installer(path, lines, first=FIRST, last=LAST):
         assert len(l) < 80 and l.isascii(), l
     open(path, "w", encoding="ascii", newline="\n").write("\n".join(new) + "\n")
 
-
-if __name__ == "__main__":
-    code, labels, listing, lines = poke_lines()
-    write_listing(code, labels, listing)
-    update_installer(sys.argv[1] if len(sys.argv) > 1 else BAS, lines)
-    print("SERIN: %d bytes, labels: %s" % (len(code), ", ".join(
-        "%s=+%d" % (k, v) for k, v in labels.items())))

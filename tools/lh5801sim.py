@@ -21,7 +21,7 @@ CLOCK_HZ = 1_300_000
 
 
 class Line:
-    """Logic level on the RX input (PB2 or PB0) as a function of time (seconds)."""
+    """Logical UART level on the RX input (1 = mark) as a function of time (seconds)."""
 
     def __init__(self, idle=1):
         self.t = [0.0]
@@ -54,7 +54,7 @@ class Halt(Exception):
 
 
 class CPU:
-    def __init__(self, line, timing="mame", read_offset=3, rx_bit=2):
+    def __init__(self, line, timing="mame", read_offset=3, rx_bit=2, rx_invert=0):
         self.m = bytearray(0x10000)
         self.line = line
         self.a = 0
@@ -70,6 +70,7 @@ class CPU:
         self.timing = timing
         self.read_offset = read_offset   # cycles before instr end when ME1 is read
         self.rx_bit = rx_bit             # port B bit carrying the RX line
+        self.rx_invert = rx_invert       # 1: pin level = NOT line level (v6.1 inverted)
         self.cur_len = 0
         self.tx_log = []                 # (time, level) of PC7 writes
 
@@ -80,7 +81,7 @@ class CPU:
     def io_read(self, addr):
         if addr == 0xF00F:
             t = (self.cyc + self.cur_len - self.read_offset) / CLOCK_HZ
-            pins = (0xFF ^ 1 << self.rx_bit) | self.line.level(t) << self.rx_bit
+            pins = (0xFF ^ 1 << self.rx_bit) | (self.line.level(t) ^ self.rx_invert) << self.rx_bit
             return (self.opb & self.ddb) | (pins & ~self.ddb & 0xFF)
         if addr == 0xF00D:
             return self.ddb

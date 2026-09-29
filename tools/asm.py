@@ -7,7 +7,8 @@ emitted as BASIC variables in the POKE lines.
 import re
 
 SYMS = ("RH", "RL", "R1", "CN", "TH", "TL", "RP", "CP", "TP",
-        "KI", "KS", "KB", "KT", "KH", "DB", "BM")   # v6.0: speed and RX port set by BASIC
+        "KI", "KS", "KB", "KT", "KH", "DB", "BM",   # v6.0: speed and RX port set by BASIC
+        "OM", "VM", "OS", "VS", "FM", "FS", "RM")   # v6.1: line polarity set by BASIC
 
 # (mnemonic, operand-pattern) -> (opcode bytes, kind)
 # kind: None | 'imm' | 'abs' | 'rel+' | 'rel-'
@@ -52,6 +53,13 @@ TABLE = {
     ("STA", "UH"): ([0x28], None),
     ("BCS+", "L"): ([0x83], "rel+"),
     ("ORI", "#(Y),i"): ([0xFD, 0x5B], "imm"),
+    # v6.1 pseudo-instructions whose opcode/operand the installer sets for the
+    # line polarity (normal TTL: mark = 1 = high; inverted: mark = low):
+    ("MARK", "#(Y)"): ([0xFD, "OM", "VM"], None),     # PC7 := mark  (ORI &80 / ANI &7F)
+    ("SPACE", "#(Y)"): ([0xFD, "OS", "VS"], None),    # PC7 := space (ANI &7F / ORI &80)
+    ("BMK+", "L"): (["FM"], "rel+"),    # branch if the tested line is mark  (BZR+ / BZS+)
+    ("BSP+", "L"): (["FS"], "rel+"),    # branch if the tested line is space (BZS+ / BZR+)
+    ("BMK-", "L"): (["RM"], "rel-"),    # branch back if mark                (BZR- / BZS-)
 }
 
 
@@ -66,13 +74,13 @@ def parse_num(s):
 
 def classify(mn, ops):
     """Return (key, operand-string-for-imm/label)."""
-    if mn in ("BZR+", "BZS+", "BCS+", "BCH+", "BZR-", "BCH-"):
+    if mn in ("BZR+", "BZS+", "BCS+", "BCH+", "BZR-", "BCH-", "BMK+", "BSP+", "BMK-"):
         return (mn, "L"), ops
     if mn == "LOP":
         reg, lab = ops.split(",")
         assert reg == "UL"
         return (mn, "UL,L"), lab
-    if ops in ("", "XH", "XL", "Y", "UH", "A", "X", "(RX)"):
+    if ops in ("", "XH", "XL", "Y", "UH", "A", "X", "(RX)", "#(Y)"):
         return (mn, ops), None
     m = re.match(r"^\(([^,()]+),([^,()]+)\)$", ops)      # (hi,lo) absolute address
     if m:

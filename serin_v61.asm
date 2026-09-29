@@ -1,7 +1,9 @@
 ; =====================================================================
-; SERIN v56 PB1 - programowy odbiornik UART 9600 bps 8N1 dla Sharp PC-1500(A)
-; CPU LH5801 @ 1,3 MHz, wejscie PB1 (&F00F bit 1, pin 39 zlacza 60-pin),
-; polaryzacja TTL-232 (spoczynek = 1, bit startu = 0).
+; SERIN v6.1 - programowy odbiornik UART 8N1 dla Sharp PC-1500(A),
+; 1200 / 2400 / 4800 / 9600 bps, wejscie PB0 (pin 9) albo PB2 (CMT-IN,
+; pin 27), polaryzacja normalna (TTL: spoczynek = stan wysoki) albo
+; odwrocona (spoczynek = stan niski) - wybor w instalatorze.
+; CPU LH5801 @ 1,3 MHz.
 ;
 ; Wywolanie z BASIC-a:
 ;   CALL SI          odbierz do 255 znakow
@@ -13,7 +15,24 @@
 ;                    (powrot z C=1 -> ROM wpisuje X do zmiennej z CALL)
 ; Czas:
 ;   pierwszy znak musi przyjsc w ciagu ~30 s, kolejne w odstepach < ~0,5 s,
-;   po M-tym (lub 255.) znaku powrot natychmiast.
+;   po M-tym (lub 255.) znaku powrot natychmiast. Timeouty nie zaleza od
+;   szybkosci transmisji.
+;
+; Kod jak w v6.0; skoki zalezne od stanu linii to pseudo-rozkazy, ktorych
+; kod wpisuje instalator (BZR i BZS trwaja tyle samo, czasy bez zmian):
+;   BMK+ = FM   skok w przod, gdy linia = mark   (BZR+ &89 / odwr. BZS+ &8B)
+;   BSP+ = FS   skok w przod, gdy linia = space  (BZS+ &8B / odwr. BZR+ &89)
+;   BMK- = RM   skok w tyl,   gdy linia = mark   (BZR- &99 / odwr. BZS- &9B)
+; Pozostale zmienne BASIC-a wpisywane przez instalator:
+;   DB = &FE (PB0) / &FB (PB2)  maska rejestru kierunku DDB (bit = 0 -> wejscie)
+;   BM = 1 (PB0) / 4 (PB2)      maska bitu wejscia w porcie B (&F00F)
+;   KB                          petla bitu: 79,5 + 11*KB cykli (MAME; instrukcja +3)
+;   KH                          opoznienie do srodka bitu startu
+;   bps    KB   KH   (KH dobrane w symulatorze: srodek tolerancji dla
+;   1200   91   47    obu tablic cykli; 9600 = v55, sprawdzone na PC-1500A)
+;   2400   42   21
+;   4800   17   12
+;   9600    5    3
 ;
 ; Adres ladowania: SI = RAM+&130 (&4130).
 ; Symbole wstawiane przez BASIC: RP = strona bufora RX (RX = RP*256),
@@ -21,13 +40,7 @@
 ; Bufor RX zaczyna sie od poczatku strony, wiec liczba znakow = XL.
 ; Skoki: LH5801 ma osobne kody dla skokow w przod (+) i w tyl (-),
 ; przesuniecie jest ZAWSZE dodatnie (0..255), liczone od nastepnego rozkazu.
-; Wersja 9600 (jak v53): petla bitu = 134,5 / 137,5 cyklu (tablica MAME /
-; instrukcja LH5801; idealnie 135,4) i krotszy czas do polowy bitu startu.
-; Pierwsza probka ok. 1,4 bitu po zboczu startu.
-; v56 PB1 = v55 z wejsciem PB1 zamiast PB2 (CMT-IN): zmienione sa tylko maski
-; bitu (ANI &FD, BII &02), wiec czasy i dlugosc kodu sa takie same jak w v55.
-; PB1 to wolne wejscie CMOS bez podciagania: dac 10 kOhm do VCC.
-; Plik jest zrodlem dla tools/build_v56.py (asembler + generator POKE).
+; Plik jest zrodlem dla tools/build_v61.py (asembler + generator POKE).
 ; =====================================================================
         RIE                 ; bez przerwan (timing!)
         LDA  XH             ; bez zmiennej (adres w ROM) albo M>255
@@ -42,39 +55,39 @@ SETM:   STA  (CP,&FF)       ; RC = r (pozostalo r+1 znakow)
         LDI  XL,0
         LDI  YH,&F0         ; Y = &F00D (DDB, rejestr kierunku portu B)
         LDI  YL,&0D
-        ANI  #(Y),&FD       ; PB1 = wejscie
+        ANI  #(Y),DB        ; PB0 lub PB2 = wejscie
         INC  Y
-        INC  Y              ; Y = &F00F (port B, bit 1 = PB1)
+        INC  Y              ; Y = &F00F (port B)
         LDI  UH,&00         ; timeout 1. znaku: 18*256*256 obiegow ~ 30 s
         LDI  A,18
-WH:     BII  #(Y),&02       ; czekaj na stan spoczynkowy (1 = mark)
-        BZR+ WL             ; linia = 1 -> czekaj na bit startu
+WH:     BII  #(Y),BM        ; czekaj na stan spoczynkowy (1 = mark)
+        BMK+ WL             ; linia = mark -> czekaj na bit startu
         LOP  UL,WH          ; 256 obiegow x 33 cykle
         DEC  UH
         BZR- WH
         DEC  A
         BZR- WH
         BCH+ DONE           ; timeout
-WL:     BII  #(Y),&02       ; czekaj na zbocze 1->0 (bit startu)
-        BZS+ START
+WL:     BII  #(Y),BM        ; czekaj na zbocze 1->0 (bit startu)
+        BSP+ START          ; linia = space -> bit startu
         LOP  UL,WL
         DEC  UH
         BZR- WL
         DEC  A
         BZR- WL
         BCH+ DONE           ; timeout
-START:  LDI  UL,3           ; ~pol bitu startu
+START:  LDI  UL,KH          ; ~pol bitu startu
 HALF:   LOP  UL,HALF
-        BII  #(Y),&02       ; srodek bitu startu: nadal 0?
-        BZR- WL             ; nie -> zaklocenie, czekaj dalej
+        BII  #(Y),BM        ; srodek bitu startu: nadal 0?
+        BMK- WL             ; nie -> zaklocenie, czekaj dalej
         LDI  UH,8           ; 8 bitow danych
-BIT:    LDI  UL,5           ; petla bitu: 1 bit = 135,4 cyklu
+BIT:    LDI  UL,KB          ; petla bitu (KB jak w SEROUT)
 DLY:    LOP  UL,DLY
         NOP                 ; (dostrojenie: +10 cykli)
         NOP
-        BII  #(Y),&02
+        BII  #(Y),BM 
         SEC
-        BZR+ ONE
+        BMK+ ONE            ; mark -> bit = 1
         REC
 ONE:    ROR                 ; LSB pierwszy
         DEC  UH

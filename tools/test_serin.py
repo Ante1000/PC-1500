@@ -1,17 +1,19 @@
 """Test SERIN/SEROUT from a BASIC installer on the LH5801 simulator.
 
-    python3 tools/test_serin.py [installer.txt] [baud] [rx_bit]
-    (default: pc1500_uart_installer-v52.txt, 4800, RX on PB2; see
-     tools/test_9600.py, tools/test_v55.py, tools/test_v56.py, tools/test_v60.py)
+    python3 tools/test_serin.py [installer.txt] [baud] [rx_bit] [invert]
+    (default: pc1500_uart_installer-v6.1.txt, 4800, RX on PB0; see
+     tools/test_v60.py and tools/test_v61.py)
 
-v6.0 asks for the speed and the RX port at INPUT prompts: the answers
-(B = 1/2/4/9, P = rx_bit) are derived from [baud] and [rx_bit].
+v6.0/v6.1 ask for the speed, the RX port (and v6.1 the polarity) at INPUT
+prompts: the answers (B = 1/2/4/9, P = rx_bit, I = invert) are derived from
+[baud], [rx_bit] and [invert]. With invert = 1 the simulated pins carry the
+inverted line (mark = low) and PC7 is read back inverted.
 
 The installer's POKE lines are evaluated (A0=&4000). SERIN is CALLed with a
-simulated 8N1 signal on PB2 (or on PB<rx_bit>; the other port B bits read 1,
-so reading the wrong bit fails every test); SEROUT's PC7 output is decoded
-by a model of an ideal PC UART receiver. Every scenario runs with two cycle tables (MAME core
-and the LH5801 manual, where shifts do not change the Z flag).
+simulated 8N1 signal on PB<rx_bit> (the other port B pins read 1, so reading
+the wrong bit fails every test); SEROUT's PC7 output is decoded by a model of
+an ideal PC UART receiver. Every scenario runs with two cycle tables (MAME
+core and the LH5801 manual, where shifts do not change the Z flag).
 """
 import os
 import random
@@ -21,10 +23,11 @@ sys.path.insert(0, os.path.dirname(__file__))
 from lh5801sim import CPU, Line, load_basic  # noqa: E402
 
 ROOT = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
-BAS = sys.argv[1] if len(sys.argv) > 1 else os.path.join(ROOT, "pc1500_uart_installer-v52.txt")
+BAS = sys.argv[1] if len(sys.argv) > 1 else os.path.join(ROOT, "pc1500_uart_installer-v6.1.txt")
 BAUD = float(sys.argv[2]) if len(sys.argv) > 2 else 4800.0
-RXBIT = int(sys.argv[3]) if len(sys.argv) > 3 else 2   # port B bit of the RX input
-INPUTS = {"B": {1200: 1, 2400: 2, 4800: 4, 9600: 9}.get(int(BAUD)), "P": RXBIT}   # v6.0 prompts
+RXBIT = int(sys.argv[3]) if len(sys.argv) > 3 else 0   # port B bit of the RX input
+INV = int(sys.argv[4]) if len(sys.argv) > 4 else 0     # 1: inverted line polarity (v6.1)
+INPUTS = {"B": {1200: 1, 2400: 2, 4800: 4, 9600: 9}.get(int(BAUD)), "P": RXBIT, "I": INV}
 STACK = (0x784E, 0x784F)            # return address pushed by the test harness
 fails = 0
 
@@ -41,7 +44,7 @@ def rnd(n, seed):
 
 
 def machine(line, timing, ro=3):
-    cpu = CPU(line, timing=timing, read_offset=ro, rx_bit=RXBIT)
+    cpu = CPU(line, timing=timing, read_offset=ro, rx_bit=RXBIT, rx_invert=INV)
     for a in range(0x10000):
         cpu.m[a] = (a * 7 + 3) & 0xFF                  # random-ish RAM
     env = load_basic(BAS, cpu, stop_line=360, inputs=INPUTS)
@@ -158,7 +161,8 @@ def serin_suite(timing):
 def tx(data, var=None, timing="mame"):
     """CALL SO[,var] with data in the TX buffer; returns (C, X, transitions)."""
     cpu, env = machine(Line(), timing)
-    cpu.pc_port = 0x7F if NEW_SEROUT else 0xFF     # new SEROUT must raise PC7 itself
+    # new SEROUT must put PC7 to mark itself: start from space (low, or high if inverted)
+    cpu.pc_port = (0x7F | INV << 7) if NEW_SEROUT else 0xFF
     TX = env["TX"]
     cpu.m[TX:TX + len(data)] = data
     before = bytes(cpu.m)
@@ -169,6 +173,7 @@ def tx(data, var=None, timing="mame"):
     tr = []
     lvl = 0 if NEW_SEROUT else 1
     for t, v in cpu.tx_log:
+        v ^= INV                                     # PC7 pin -> logical level
         if v != lvl:
             tr.append((t, v)); lvl = v
     return c, x, tr, cpu.now()
@@ -280,7 +285,8 @@ def serout_suite(timing):
 
 
 if __name__ == "__main__":
-    print("installer: %s, %d bps, RX on PB%d" % (os.path.basename(BAS), BAUD, RXBIT))
+    print("installer: %s, %d bps, RX on PB%d%s" % (os.path.basename(BAS), BAUD, RXBIT,
+                                                  ", inverted" if INV else ""))
     for tb in ("mame", "guide"):
         serout_suite(tb)
     for tb in ("mame", "guide"):
