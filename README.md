@@ -9,11 +9,13 @@ polaryzacja TTL albo odwrócona.
 | `pc1500_uart_installer-v6.1.txt` | **aktualny** instalator v6.1 + program testowy (TX, RX, echo) |
 | `serout_v61.asm`, `serin_v61.asm` (+ `.lst`) | źródła v6.1 i listingi |
 | `pc1500_uart_installer-v6.0.txt`, `serout_v60.asm`, `serin_v60.asm` (+ `.lst`) | v6.0: to samo bez wyboru polaryzacji (sprawdzone na PC-1500A) |
+| `POMOC_NEW_pamiec.md` | jak ustawić `NEW` dla PC-1500 / PC-1500A z modułami CE-151…CE-163 |
 | `tools/` | asembler, symulator LH5801, budowanie linii POKE, testy (patrz niżej) |
 
 ## Instalacja
 
-`NEW &4400` w trybie PRO, `CLOAD` (albo wpisanie programu), `RUN`. Instalator
+`NEW &4400` w trybie PRO (PC-1500A bez modułu pamięci; dla innych konfiguracji patrz
+[POMOC_NEW_pamiec.md](POMOC_NEW_pamiec.md)), `CLOAD` (albo wpisanie programu), `RUN`. Instalator
 zadaje pytania; samo ENTER wybiera wartość domyślną:
 
 | Pytanie | Odpowiedź |
