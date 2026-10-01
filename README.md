@@ -25,7 +25,7 @@ zadaje pytania; samo ENTER wybiera wartość domyślną:
 |---|---|
 | `BAUDRATE (DEFAULT 4800)` | `1` = 1200, `2` = 2400, `4` = 4800, `9` = 9600, ENTER = 4800 |
 | `RX PORT (DEFAULT PB2)` | `2` lub ENTER = PB2 (CMT-IN, pin 27), `0` = PB0 (pin 9); w v6.1: `RX PORT (DEFAULT PB0)`, ENTER = PB0 |
-| `INVERSION (0=NO, 1=YES)` | `0` lub ENTER = normalnie (TTL), `1` = sygnał odwrócony (v6.1 i v6.2) |
+| `INVERSION (ENTER=NO, 1=YES)` | ENTER (lub `0`) = normalnie (TTL), `1` = sygnał odwrócony; w v6.1: `INVERSION (0=NO, 1=YES)` |
 
 Przy innej odpowiedzi instalator piszczy i pyta ponownie. Samo ENTER działa,
 bo ROM PC-1500 przy pustym INPUT nie zmienia zmiennej i pomija resztę linii,
@@ -60,8 +60,8 @@ M-tym (lub 255.) znaku SERIN wraca od razu. Oba czasy nie zależą od szybkości
 
 Po instalacji instalator przechodzi do testów (terminal w PC ustaw na tę samą
 szybkość, 8N1, i tę samą polaryzację). W v6.2 każdy test można pominąć:
-`[ENTER]=TX TEST, [0] EXIT` (`0` pomija test TX i przechodzi do pytania o test RX)
-oraz `[ENTER]=RX TEST, [0] EXIT` (`0` kończy instalator komunikatem
+`ENTER=TX TEST, 0=EXIT` (`0` pomija test TX i przechodzi do pytania o test RX)
+oraz `ENTER=RX TEST, 0=EXIT` (`0` kończy instalator komunikatem
 `READY. RUN 530 = RX TEST`). Kod jest wtedy zainstalowany, a test RX można
 uruchomić później przez `RUN 530`.
 
@@ -70,9 +70,17 @@ uruchomić później przez `RUN 530`.
 * Test RX (`RUN 530`) odczytuje z kodu zainstalowaną szybkość, port i polaryzację
   i pokazuje je w linii `WAITING 4800 PB0...` (`... PB0 INV...` przy inwersji).
   Gdy w pamięci nie ma kodu v6.x, wyświetla `NO v6.x CODE! RUN 10` (v6.1: `NO v6.1 CODE!`).
-* Pytanie `MAX (0=255)?` ustala M, a `ECHO (0=NO, 1=YES)` (ENTER = 0) włącza
+* Pytanie `MAX (0=255)?` ustala M, a `ECHO (ENTER=NO, 1=YES)` włącza
   odsyłanie odebranego tekstu do PC przez SEROUT.
-* Odebrany tekst jest wyświetlany po 26 znaków w linii.
+* `PRINTER (ENTER=NO, 1=YES)` (v6.2): `1` drukuje odebrany tekst także na drukarce
+  CE-150 (`TEXT`, `CSIZE 1`: 36 znaków w linii). Bez podłączonego CE-150 wybierz ENTER,
+  bo `TEXT`/`LPRINT` zgłoszą błąd. Drukowanie linii trwa kilka sekund i w tym czasie
+  PC-1500 nie odbiera.
+* Odebrany tekst jest wyświetlany po 26 znaków w linii. v6.2 pomija znaki sterujące
+  (NUL, CR, LF…), a znaki powyżej 126 pokazuje jako kropki (v6.1 pokazywał kropki
+  także zamiast znaków sterujących).
+* v6.2 nie używa w komunikatach znaków `[` i `]`, bo wyświetlacz PC-1500 pokazuje je
+  jako √ i π.
 
 ## Łączność dwóch PC-1500 (`pc1500_uart_link-v1.0.txt`)
 
