@@ -1,7 +1,9 @@
-"""Build v6.1 (1200/2400/4800/9600 bps, RX on PB0 or PB2, normal or inverted
-line polarity, 255-byte buffers): assemble serout_v61.asm and serin_v61.asm,
-write their .lst listings and refresh the POKE lines in
-pc1500_uart_installer-v6.1.txt (SEROUT: 170..265, SERIN: 280..355).
+"""Build v6.1/v6.2 (1200/2400/4800/9600 bps, RX on PB0 or PB2, normal or
+inverted line polarity, 255-byte buffers): assemble serout_v61.asm and
+serin_v61.asm, write their .lst listings and refresh the POKE lines in
+pc1500_uart_installer-v6.1.txt and -v6.2.txt (SEROUT: 170..265, SERIN:
+280..355). v6.2 installs the same code; only its BASIC questions and test
+prompts differ (RX port default PB2, TX/RX tests can be skipped).
 
 The installer's INPUT questions set BASIC variables that the POKE lines carry:
   speed     SEROUT KI, KS, KB, KT      SERIN KH, KB
@@ -22,7 +24,7 @@ import sys
 sys.path.insert(0, os.path.dirname(__file__))
 from build_common import ROOT, poke_lines, update_installer, write_listing  # noqa: E402
 
-BAS = os.path.join(ROOT, "pc1500_uart_installer-v6.1.txt")
+INSTALLERS = [os.path.join(ROOT, "pc1500_uart_installer-v6.%d.txt" % v) for v in (1, 2)]
 PARTS = [
     # source, variable, first, step, last, title, base, load offset, free bytes
     ("serout_v61", "SO", 170, 10, 265, "SEROUT v6.1", "SO = RAM+&0C5", 0x0C5, 0x130 - 0x0C5),
@@ -49,8 +51,9 @@ EXPECT = {
 }
 
 
-if __name__ == "__main__":
-    text = open(BAS, encoding="ascii").read()
+def build(bas):
+    print("== %s" % os.path.basename(bas))
+    text = open(bas, encoding="ascii").read()
     for name, var, first, step, last, title, base, off, limit in PARTS:
         code, labels, listing, lines = poke_lines(os.path.join(ROOT, name + ".asm"), var, first, step, last)
         assert len(code) <= limit, "%s: %d bytes > %d" % (name, len(code), limit)
@@ -61,7 +64,7 @@ if __name__ == "__main__":
         assert re.search(r"REM %s \(.*\):? +&4%03X \.\. %s" % (
             "SEROUT" if var == "SO" else "SERIN", off, end), text), "fix the %s range REM (%s)" % (var, end)
         write_listing(code, labels, listing, os.path.join(ROOT, name + ".lst"), title, base)
-        update_installer(BAS, lines, first, last)
+        update_installer(bas, lines, first, last)
         print("%s: %d bytes, labels: %s" % (title, len(code), ", ".join(
             "%s=+%d" % (k, v) for k, v in labels.items())))
         print("  set by the installer: %s" % ", ".join("%s+%d=%s" % (var, k, v) for k, v in sorted(want.items())))
@@ -76,3 +79,8 @@ if __name__ == "__main__":
     assert m and int(m.group(1)) == so_kb, "fix line 576"
     m = re.search(r"IF PEEK \(SI \+ (\d+)\) = &8B THEN", text)
     assert m and int(m.group(1)) == si_fm, "fix line 579"
+
+
+if __name__ == "__main__":
+    for bas in INSTALLERS:
+        build(bas)

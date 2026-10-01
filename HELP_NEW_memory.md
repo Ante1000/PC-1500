@@ -1,6 +1,6 @@
 # Setting `NEW` before running the SEROUT/SERIN installer (v6.x)
 
-The installer (`pc1500_uart_installer-v6.1.txt`, also v6.0) uses the **first 1 KB of RAM**,
+The installer (`pc1500_uart_installer-v6.2.txt`, also v6.0 and v6.1) uses the **first 1 KB of RAM**,
 counted from the start of RAM. Where RAM starts depends on the model and on the memory module.
 Before loading the installer, enter `NEW` in PRO mode so that BASIC starts
 **after this kilobyte**.
@@ -34,7 +34,7 @@ What the kilobyte contains (A0 = RAM start):
 | from A0+&400 | BASIC program |
 
 The installer computes every address from `PEEK &7863` itself and checks that BASIC starts
-at A0+&400 or later. **Note:** the v6.0/v6.1 messages always suggest "NEW &4400" (the value for
+at A0+&400 or later. **Note:** the v6.x messages always suggest "NEW &4400" (the value for
 a PC-1500A without a module). With a module, use the table below.
 
 ## Configuration table
@@ -107,7 +107,7 @@ RAM start. Speed, port and inversion stay as selected during installation. A CE-
   or use only one bank.
 - **Module firmware.** Modules with a bank-management program at the start of each bank need
   their own `NEW` offset (e.g. TRAMsoft: `NEW &100`). That program sits right after the system
-  area, exactly where the v6.x installer puts SEROUT (A0+&C5). **v6.1 would overwrite it.**
+  area, exactly where the v6.x installer puts SEROUT (A0+&C5). **v6.x would overwrite it.**
   Such a module needs an installer version with a shifted block (not available yet).
 
 ## Sources

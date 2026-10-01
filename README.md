@@ -6,9 +6,10 @@ polaryzacja TTL albo odwrócona.
 
 | Plik | Opis |
 |---|---|
-| `pc1500_uart_installer-v6.1.txt` | **aktualny** instalator v6.1 + program testowy (TX, RX, echo) |
+| `pc1500_uart_installer-v6.2.txt` | **aktualny** instalator v6.2 + program testowy (TX, RX, echo); domyślny port RX = PB2, testy TX i RX można pominąć |
+| `pc1500_uart_installer-v6.1.txt` | v6.1: ten sam kod, domyślny port RX = PB0, testy bez możliwości pominięcia |
 | `pc1500_uart_link-v1.0.txt` | łączność dwóch PC-1500: DEMO (liczba co 5 s), wysyłanie tekstu, odbiór (patrz niżej) |
-| `serout_v61.asm`, `serin_v61.asm` (+ `.lst`) | źródła v6.1 i listingi |
+| `serout_v61.asm`, `serin_v61.asm` (+ `.lst`) | źródła v6.1/v6.2 (kod jest ten sam) i listingi |
 | `pc1500_uart_installer-v6.0.txt`, `serout_v60.asm`, `serin_v60.asm` (+ `.lst`) | v6.0: to samo bez wyboru polaryzacji (sprawdzone na PC-1500A) |
 | `HELP_NEW_memory.md` | how to set `NEW` for PC-1500 / PC-1500A with CE-151…CE-163 modules (English) |
 | `tools/` | asembler, symulator LH5801, budowanie linii POKE, testy (patrz niżej) |
@@ -22,8 +23,8 @@ zadaje pytania; samo ENTER wybiera wartość domyślną:
 | Pytanie | Odpowiedź |
 |---|---|
 | `BAUDRATE (DEFAULT 4800)` | `1` = 1200, `2` = 2400, `4` = 4800, `9` = 9600, ENTER = 4800 |
-| `RX PORT (DEFAULT PB0)` | `0` lub ENTER = PB0 (pin 9), `2` = PB2 (CMT-IN, pin 27) |
-| `INVERSION (0=NO, 1=YES)` | `0` lub ENTER = normalnie (TTL), `1` = sygnał odwrócony (tylko v6.1) |
+| `RX PORT (DEFAULT PB2)` | `2` lub ENTER = PB2 (CMT-IN, pin 27), `0` = PB0 (pin 9); w v6.1: `RX PORT (DEFAULT PB0)`, ENTER = PB0 |
+| `INVERSION (0=NO, 1=YES)` | `0` lub ENTER = normalnie (TTL), `1` = sygnał odwrócony (v6.1 i v6.2) |
 
 Przy innej odpowiedzi instalator piszczy i pyta ponownie. Samo ENTER działa,
 bo ROM PC-1500 przy pustym INPUT nie zmienia zmiennej i pomija resztę linii,
@@ -57,22 +58,26 @@ M-tym (lub 255.) znaku SERIN wraca od razu. Oba czasy nie zależą od szybkości
 ## Program testowy
 
 Po instalacji instalator przechodzi do testów (terminal w PC ustaw na tę samą
-szybkość, 8N1, i tę samą polaryzację):
+szybkość, 8N1, i tę samą polaryzację). W v6.2 każdy test można pominąć:
+`[ENTER]=TX TEST, [0] EXIT` (`0` pomija test TX i przechodzi do pytania o test RX)
+oraz `[ENTER]=RX TEST, [0] EXIT` (`0` kończy instalator komunikatem
+`READY. RUN 530 = RX TEST`). Kod jest wtedy zainstalowany, a test RX można
+uruchomić później przez `RUN 530`.
 
 * Test TX wysyła `H` (`CALL SO`), a potem `_HELLO` (`CALL SO,N`, N = 6);
   w terminalu widać `H_HELLO`.
 * Test RX (`RUN 530`) odczytuje z kodu zainstalowaną szybkość, port i polaryzację
   i pokazuje je w linii `WAITING 4800 PB0...` (`... PB0 INV...` przy inwersji).
-  Gdy w pamięci nie ma kodu v6.1, wyświetla `NO v6.1 CODE! RUN 10`.
+  Gdy w pamięci nie ma kodu v6.x, wyświetla `NO v6.x CODE! RUN 10` (v6.1: `NO v6.1 CODE!`).
 * Pytanie `MAX (0=255)?` ustala M, a `ECHO (0=NO, 1=YES)` (ENTER = 0) włącza
   odsyłanie odebranego tekstu do PC przez SEROUT.
 * Odebrany tekst jest wyświetlany po 26 znaków w linii.
 
 ## Łączność dwóch PC-1500 (`pc1500_uart_link-v1.0.txt`)
 
-Program w BASIC-u korzysta z zainstalowanych SERIN/SEROUT (v6.0 lub v6.1).
+Program w BASIC-u korzysta z zainstalowanych SERIN/SEROUT (v6.0, v6.1 lub v6.2).
 
-1. Na obu komputerach zainstaluj kod instalatorem v6.1 z **tą samą szybkością i
+1. Na obu komputerach zainstaluj kod instalatorem v6.2 z **tą samą szybkością i
    polaryzacją** (port RX może być różny).
 2. `NEW &4400` w trybie PRO (kod i bufory poniżej &4400 zostają), wczytaj
    `pc1500_uart_link-v1.0.txt`, `RUN`. Program sam odczyta z kodu szybkość, port
@@ -107,7 +112,7 @@ preambuły (1200–9600 bps, obie polaryzacje, obie tablice cykli).
   słucha (dłuższy tekst: ok. 1,5 s na każdą pełną linię).
 * Program zajmuje ok. 2,6 KB, więc na PC-1500 z 2 KB RAM się nie zmieści.
 
-## Polaryzacja (v6.1)
+## Polaryzacja (v6.1, v6.2)
 
 | INVERSION | spoczynek i bit „1” | bit startu i bit „0” |
 |---|---|---|
@@ -131,7 +136,7 @@ Wtedy najpierw sprawdź ustawienie INVERSION.
 
 W kodzie inwersja zamienia rozkazy tej samej długości: przy nadawaniu
 `ORI #(Y),&80` ↔ `ANI #(Y),&7F` (po 17 cykli), przy odbiorze `BZR` ↔ `BZS`.
-Czasy są więc identyczne jak bez inwersji, a przy INVERSION = 0 kod v6.1 jest
+Czasy są więc identyczne jak bez inwersji, a przy INVERSION = 0 kod v6.1/v6.2 jest
 bajt w bajt taki sam jak v6.0.
 
 ## Podłączenie
@@ -208,8 +213,8 @@ n × ok. 6,5 ms, domyślnie 77 ≈ 0,5 s).
 
 | Plik | Opis |
 |---|---|
-| `tools/build_v61.py`, `tools/build_v60.py` | asemblują źródła, tworzą `.lst` i podmieniają linie POKE w instalatorze |
-| `tools/test_v61.py`, `tools/test_v60.py` | pełne testy w symulatorze, np. `python3 tools/test_v61.py 4800:0:1` (szybkość:port:inwersja) |
+| `tools/build_v61.py`, `tools/build_v60.py` | asemblują źródła, tworzą `.lst` i podmieniają linie POKE w instalatorach (`build_v61.py`: v6.1 i v6.2) |
+| `tools/test_v62.py`, `tools/test_v61.py`, `tools/test_v60.py` | pełne testy w symulatorze, np. `python3 tools/test_v62.py 4800:2:1` (szybkość:port:inwersja); `test_v62.py` sprawdza też odpowiedzi na pytanie o port |
 | `tools/test_serin.py` | zestaw testów: `test_serin.py <instalator> <baud> <bit portu B> <inwersja>` |
 | `tools/test_link.py` | preambuła programu łączności: odbiornik wchodzi w `CALL SI` w środku nadawania |
 | `tools/lh5801sim.py` | symulator LH5801 z portami LH5811 i wykonywaniem instalatora (POKE, INPUT, IF) |
