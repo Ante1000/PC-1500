@@ -12,6 +12,7 @@ polaryzacja TTL albo odwrócona.
 | `serout_v61.asm`, `serin_v61.asm` (+ `.lst`) | źródła v6.1/v6.2 (kod jest ten sam) i listingi |
 | `pc1500_uart_installer-v6.0.txt`, `serout_v60.asm`, `serin_v60.asm` (+ `.lst`) | v6.0: to samo bez wyboru polaryzacji (sprawdzone na PC-1500A) |
 | `HELP_NEW_memory.md` | how to set `NEW` for PC-1500 / PC-1500A with CE-151…CE-163 modules (English) |
+| `img/pc1500_60pin_connector.png` | rysunek złącza 60-pin z zaznaczonymi pinami UART (patrz „Podłączenie”) |
 | `tools/` | asembler, symulator LH5801, budowanie linii POKE, testy (patrz niżej) |
 
 ## Instalacja
@@ -140,6 +141,13 @@ Czasy są więc identyczne jak bez inwersji, a przy INVERSION = 0 kod v6.1/v6.2 
 bajt w bajt taki sam jak v6.0.
 
 ## Podłączenie
+
+![Złącze 60-pin PC-1500: piny 9 PB0, 10 PC7, 27 PB2 i 55 GND](img/pc1500_60pin_connector.png)
+
+Złącze widziane z lewego boku komputera (od zewnątrz): górny rząd to od lewej
+piny 30…1, dolny 60…31. PB2 (27) jest czwartym pinem od lewej w górnym rzędzie,
+PC7 (10) i PB0 (9) to 21. i 22. pin od lewej w górnym rzędzie, a GND (52–55)
+to piny 6.–9. od lewej w dolnym rzędzie.
 
 | Sygnał | Pin złącza 60-pin | Nóżka LH5811 |
 |---|---|---|
