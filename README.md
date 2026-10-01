@@ -7,6 +7,7 @@ polaryzacja TTL albo odwrócona.
 | Plik | Opis |
 |---|---|
 | `pc1500_uart_installer-v6.1.txt` | **aktualny** instalator v6.1 + program testowy (TX, RX, echo) |
+| `pc1500_uart_link-v1.0.txt` | łączność dwóch PC-1500: DEMO (liczba co 5 s), wysyłanie tekstu, odbiór (patrz niżej) |
 | `serout_v61.asm`, `serin_v61.asm` (+ `.lst`) | źródła v6.1 i listingi |
 | `pc1500_uart_installer-v6.0.txt`, `serout_v60.asm`, `serin_v60.asm` (+ `.lst`) | v6.0: to samo bez wyboru polaryzacji (sprawdzone na PC-1500A) |
 | `HELP_NEW_memory.md` | how to set `NEW` for PC-1500 / PC-1500A with CE-151…CE-163 modules (English) |
@@ -66,6 +67,45 @@ szybkość, 8N1, i tę samą polaryzację):
 * Pytanie `MAX (0=255)?` ustala M, a `ECHO (0=NO, 1=YES)` (ENTER = 0) włącza
   odsyłanie odebranego tekstu do PC przez SEROUT.
 * Odebrany tekst jest wyświetlany po 26 znaków w linii.
+
+## Łączność dwóch PC-1500 (`pc1500_uart_link-v1.0.txt`)
+
+Program w BASIC-u korzysta z zainstalowanych SERIN/SEROUT (v6.0 lub v6.1).
+
+1. Na obu komputerach zainstaluj kod instalatorem v6.1 z **tą samą szybkością i
+   polaryzacją** (port RX może być różny).
+2. `NEW &4400` w trybie PRO (kod i bufory poniżej &4400 zostają), wczytaj
+   `pc1500_uart_link-v1.0.txt`, `RUN`. Program sam odczyta z kodu szybkość, port
+   i polaryzację (`UART LINK 4800 PB0`).
+3. Połącz PC7 (pin 10) nadawcy z PB0 (pin 9) albo PB2 (pin 27) odbiorcy oraz
+   GND z GND (piny 52–55). Do pracy w obie strony dodaj drugi przewód w przeciwnym
+   kierunku. Na PB0 daj rezystor 10 kΩ do VCC (patrz „Podłączenie”); przewód
+   sygnałowy najlepiej przez rezystor 1 kΩ.
+
+| Menu | Działanie |
+|---|---|
+| `1` DEMO | co ok. 5 s (zegar `TIME`) wysyła losową liczbę 100–999; dowolny klawisz = menu |
+| `2` TX | wysyła wpisany tekst (do 80 znaków, `TX>`); samo ENTER = menu |
+| `3` RX | odbiera i wyświetla `numer>tekst` po 26 znaków w linii; **przytrzymaj** dowolny klawisz ok. 2 s = menu |
+| `0` | koniec |
+
+Każda wiadomość to jedno `CALL SO,N`: najpierw PL bajtów NUL (PL = szybkość/64, czyli
+ok. 150 ms), potem tekst i CR LF. Odbiornik pomija NUL-e (wyszukiwanie binarne
+pierwszego bajtu ≠ 0). Dzięki tej preambule odbiornik, który akurat wykonywał
+BASIC, wchodzi w `CALL SI` w trakcie NUL-i i i tak synchronizuje się na pierwszym
+znaku tekstu. Bez preambuły pierwszy znak byłby wtedy zgubiony albo przekłamany.
+`tools/test_link.py` sprawdza w symulatorze wejście w `CALL SI` w dowolnej chwili
+preambuły (1200–9600 bps, obie polaryzacje, obie tablice cykli).
+
+* Terminal w PC może też odbierać i nadawać: NUL-e zwykle nie są wyświetlane, a CR LF
+  kończy linię. Tekst wysłany z PC do trybu RX nie potrzebuje preambuły, jeśli
+  PC-1500 czeka już w `CALL SI`.
+* W trybie RX program skraca timeout pierwszego znaku do ok. 1,7 s (`POKE SI+32,1`),
+  żeby między wywołaniami sprawdzać klawiaturę. Menu i `0` przywracają 30 s. Po
+  przerwaniu programu klawiszem BREAK wpisz `POKE &4130+32,18`.
+* Łącze jest półdupleksowe. W czasie wyświetlania odebranej wiadomości odbiornik nie
+  słucha (dłuższy tekst: ok. 1,5 s na każdą pełną linię).
+* Program zajmuje ok. 2,6 KB, więc na PC-1500 z 2 KB RAM się nie zmieści.
 
 ## Polaryzacja (v6.1)
 
@@ -171,6 +211,7 @@ n × ok. 6,5 ms, domyślnie 77 ≈ 0,5 s).
 | `tools/build_v61.py`, `tools/build_v60.py` | asemblują źródła, tworzą `.lst` i podmieniają linie POKE w instalatorze |
 | `tools/test_v61.py`, `tools/test_v60.py` | pełne testy w symulatorze, np. `python3 tools/test_v61.py 4800:0:1` (szybkość:port:inwersja) |
 | `tools/test_serin.py` | zestaw testów: `test_serin.py <instalator> <baud> <bit portu B> <inwersja>` |
+| `tools/test_link.py` | preambuła programu łączności: odbiornik wchodzi w `CALL SI` w środku nadawania |
 | `tools/lh5801sim.py` | symulator LH5801 z portami LH5811 i wykonywaniem instalatora (POKE, INPUT, IF) |
 | `tools/asm.py` | mały asembler LH5801 (także pseudo-rozkazy MARK/SPACE/BMK/BSP dla polaryzacji) |
 | `tools/build_common.py` | wspólne funkcje skryptów budujących |
