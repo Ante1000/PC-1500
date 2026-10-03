@@ -1,4 +1,4 @@
-# Setting `NEW0` before loading the SEROUT/SERIN installer (v6.x)
+# Setting `NEW0` and NEW&nnnn (see in the table below) before loading the SEROUT/SERIN installer (v6.x)
 
 The installer (`pc1500_uart_installer-v6.2.txt`) uses the **first 1 KB of RAM**,
 counted from the start of RAM. Where RAM starts depends on the model and on the memory module.
