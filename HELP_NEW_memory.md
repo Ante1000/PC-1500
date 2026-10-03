@@ -1,6 +1,6 @@
-# Setting `NEW` before running the SEROUT/SERIN installer (v6.x)
+# Setting `NEW0` before loading the SEROUT/SERIN installer (v6.x)
 
-The installer (`pc1500_uart_installer-v6.2.txt`, also v6.0 and v6.1) uses the **first 1 KB of RAM**,
+The installer (`pc1500_uart_installer-v6.2.txt`) uses the **first 1 KB of RAM**,
 counted from the start of RAM. Where RAM starts depends on the model and on the memory module.
 Before loading the installer, enter `NEW` in PRO mode so that BASIC starts
 **after this kilobyte**.
